@@ -185,7 +185,7 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 
 ## Install
 
-1. Download `Yabai-Menu.zip` from Releases.
+1. Download the versioned `Yabai-Menu-<version>.zip` asset from Releases. Do not download GitHub's automatic “Source code” archives.
 2. Unzip and move `Yabai Menu.app` to `/Applications`.
 3. Open the app. It appears only in the menu bar.
 4. Enable **Launch Yabai Menu at Login** if you want background synchronization after login and wake.
@@ -202,7 +202,32 @@ cd yabai-menu
 ./build.sh
 ```
 
-The result is written to `dist/Yabai Menu.app` and ad-hoc signed.
+The build removes Finder/resource-fork metadata before signing, creates both
+`dist/Yabai Menu.app` and a versioned ZIP, and then extracts and validates the
+ZIP as a second-machine distribution test. The archive deliberately excludes
+extended attributes, resource forks, quarantine data, and ACLs.
+
+## Launch troubleshooting
+
+The app executable is `YabaiMenu` (without a space). If Finder shows a crossed-circle icon or macOS reports a launch failure, first verify the downloaded bundle:
+
+```sh
+codesign --verify --deep --strict --verbose=4 "/Applications/Yabai Menu.app"
+ls -l "/Applications/Yabai Menu.app/Contents/MacOS/YabaiMenu"
+"/Applications/Yabai Menu.app/Contents/MacOS/YabaiMenu"
+```
+
+If `ls -l` does not begin with an executable mode such as `-rwxr-xr-x`, the transfer also stripped the executable permission. If verification reports `com.apple.FinderInfo`, the bundle was modified by filesystem metadata after signing. A current release archive should have neither problem. Re-download the versioned release asset rather than repackaging the app with Finder. As a local recovery for an already affected copy, restore the permission before signing again:
+
+```sh
+chmod 755 "/Applications/Yabai Menu.app/Contents/MacOS/YabaiMenu"
+xattr -cr "/Applications/Yabai Menu.app"
+codesign --force --deep --sign - "/Applications/Yabai Menu.app"
+codesign --verify --deep --strict --verbose=4 "/Applications/Yabai Menu.app"
+open "/Applications/Yabai Menu.app"
+```
+
+Apple documents why Finder information and resource forks are forbidden in a signed app bundle in [Technical Q&A QA1940](https://developer.apple.com/library/archive/qa/qa1940/_index.html).
 
 ## Current scope
 
