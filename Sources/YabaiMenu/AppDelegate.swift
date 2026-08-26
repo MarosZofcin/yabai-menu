@@ -8,6 +8,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var store = YabaircBlacklistStore(fileURL: yabaircURL)
     private lazy var gitSync = GitSyncController(repositoryURL: repositoryURL, managedFileURL: yabaircURL)
     private let yabai = YabaiController()
+    private lazy var branchHighlight = BranchHighlightController(yabai: yabai) { [weak self] message in
+        guard let self else { return }
+        self.operationStatus = message
+        self.rebuildMenu()
+    }
 
     private var statusItem: NSStatusItem!
     private var statusTimer: Timer?
@@ -52,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         captureCurrentApplication(NSWorkspace.shared.frontmostApplication)
         refreshStatus()
         rebuildMenu()
+        branchHighlight.start()
 
         statusTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshStatus() }
@@ -68,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         statusTimer?.invalidate()
         hourlySyncTimer?.invalidate()
+        branchHighlight.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -120,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(disabledItem("Current app: \(currentApp?.name ?? "Unavailable")"))
+        menu.addItem(disabledItem("Option-click tiled window: Highlight BSP branch"))
         if let currentApp {
             let isFloating = store.contains(floatingApps, application: currentApp)
             let title = isFloating ? "Remove \(currentApp.name) from Floating Apps" : "Float \(currentApp.name)"
