@@ -119,6 +119,79 @@ struct YabaiController: Sendable {
         }
     }
 
+    func bspBranchesAtMouse() throws -> BSPBranchSelection {
+        guard let executableURL else {
+            throw AppError.message("yabai was not found in /opt/homebrew/bin or /usr/local/bin.")
+        }
+
+        let targetResult = ProcessRunner.run(
+            executableURL,
+            arguments: ["-m", "query", "--windows", "--window", "mouse"]
+        )
+        guard targetResult.succeeded else {
+            throw AppError.message("Could not identify the window below the pointer: \(targetResult.usefulError)")
+        }
+        let decoder = JSONDecoder()
+        guard let targetData = targetResult.standardOutput.data(using: .utf8),
+              let target = try? decoder.decode(BSPWindowSnapshot.self, from: targetData) else {
+            throw AppError.message("Could not decode yabai's window information.")
+        }
+        guard !target.isFloating, !target.isMinimized, !target.isHidden else {
+            throw BSPTreeError.targetNotTiled
+        }
+
+        let spaceResult = ProcessRunner.run(
+            executableURL,
+            arguments: ["-m", "query", "--spaces", "--space", String(target.space)]
+        )
+        guard spaceResult.succeeded,
+              let spaceData = spaceResult.standardOutput.data(using: .utf8),
+              let space = try? decoder.decode(BSPSpaceSnapshot.self, from: spaceData),
+              space.type == "bsp" else {
+            throw AppError.message("The clicked window is not on a BSP space.")
+        }
+
+        let displayResult = ProcessRunner.run(
+            executableURL,
+            arguments: ["-m", "query", "--displays", "--display", String(target.display)]
+        )
+        guard displayResult.succeeded,
+              let displayData = displayResult.standardOutput.data(using: .utf8),
+              let display = try? decoder.decode(BSPDisplaySnapshot.self, from: displayData) else {
+            throw AppError.message("Could not identify the display containing the clicked window.")
+        }
+        guard display.index == target.display else {
+            throw BSPTreeError.hierarchyCouldNotBeResolved
+        }
+
+        let windowsResult = ProcessRunner.run(
+            executableURL,
+            arguments: ["-m", "query", "--windows", "--space", String(target.space)]
+        )
+        guard windowsResult.succeeded else {
+            throw AppError.message("Could not query the current BSP space: \(windowsResult.usefulError)")
+        }
+        guard let windowsData = windowsResult.standardOutput.data(using: .utf8),
+              let windows = try? decoder.decode([BSPWindowSnapshot].self, from: windowsData) else {
+            throw AppError.message("Could not decode yabai's BSP window list.")
+        }
+        guard let currentTarget = windows.first(where: { $0.id == target.id }),
+              currentTarget.space == target.space,
+              currentTarget.display == target.display else {
+            // The clicked window changed Spaces or displays during the three
+            // queries above. Do not draw an overlay using stale coordinates.
+            throw BSPTreeError.hierarchyCouldNotBeResolved
+        }
+
+        let branches = try BSPTreeResolver().branches(for: target.id, in: windows)
+        return BSPBranchSelection(
+            windowID: target.id,
+            space: target.space,
+            display: display,
+            branches: branches
+        )
+    }
+
     static func stableIdentifier(name: String, bundleIdentifier: String?) -> String {
         let value = bundleIdentifier ?? name.lowercased()
         var hash: UInt64 = 14_695_981_039_346_656_037
@@ -151,4 +224,8 @@ struct YabaiController: Sendable {
             throw AppError.message("Could not \(action): \(result.usefulError)")
         }
     }
+}
+
+private struct BSPSpaceSnapshot: Decodable {
+    let type: String
 }
