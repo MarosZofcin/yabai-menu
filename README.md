@@ -95,6 +95,7 @@ That narrow workflow is the reason for Yabai Menu. It is not intended to replace
 - synchronization at launch, after wake, every hour, before blacklist changes, and on demand
 - visible GitHub state and last successful synchronization time
 - optional launch at login
+- Option-click inspection of the clicked tiled window's BSP ancestor branches
 
 ## Detailed behavior
 
@@ -125,6 +126,19 @@ Removing an application follows the same process. Windows that were floating bec
 ### When another Mac changes the blacklist
 
 At launch, after wake, once per hour, or after **Sync Now**, the receiving Mac fetches the upstream branch. A clean behind branch is fast-forwarded, the updated rules are loaded from `yabairc`, and they are applied to the running yabai instance. If the Mac is asleep or offline, it catches up during the next successful synchronization.
+
+### Inspecting a BSP branch
+
+Hold **Option** and click a tiled window on a BSP Space. Yabai Menu shows a
+non-interactive, transparent frame around that window's nearest BSP parent
+branch. Continue holding Option and click the same window again to move one
+level upward; the final level is the complete BSP tree for that Space.
+
+The inspection overlay neither changes the layout nor accepts mouse events. It
+uses yabai's per-window split metadata together with the current frames. If
+those values do not describe one unambiguous hierarchy, Yabai Menu hides the
+overlay instead of guessing. This interaction requires Yabai Menu itself to be
+permitted in **System Settings → Privacy & Security → Accessibility**.
 
 ### Synchronization states
 
@@ -180,6 +194,7 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 - Apple Silicon Mac
 - macOS 13 or later
 - yabai installed at `/opt/homebrew/bin/yabai` or `/usr/local/bin/yabai`
+- Accessibility permission for both yabai and Yabai Menu (needed for global Option-click inspection)
 - Git-backed yabai config at `~/dotfiles/yabai/yabairc`
 - an upstream branch configured for `~/dotfiles`
 
