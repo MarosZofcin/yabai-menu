@@ -2,6 +2,17 @@
 
 All notable changes to Yabai Menu are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Option-click BSP branch inspection with a transparent, click-through overlay.
+- Repeated Option-clicks on the same tiled window advance from its closest
+  parent branch to the complete current BSP tree.
+- Conservative reconstruction checks and synthetic self-tests for BSP split
+  metadata, stacked leaves, invalid snapshots, and multi-display coordinate
+  conversion.
+
 ## [1.0.1] - 2026-08-24
 
 ### Fixed
