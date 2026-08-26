@@ -1,0 +1,89 @@
+name: Build and Release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and verify macOS app
+    runs-on: macos-15
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      archive: ${{ steps.version.outputs.archive }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read application version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Unsupported CFBundleShortVersionString: $version" >&2
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "archive=Yabai-Menu-$version.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build, sign, package, and self-test
+        run: ./build.sh
+
+      - name: Verify release archive exists
+        shell: bash
+        run: test -f "dist/${{ steps.version.outputs.archive }}"
+
+      - name: Upload verified archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.archive }}
+          path: dist/${{ steps.version.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish new version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified archive
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.archive }}
+          path: release
+
+      - name: Create tag and GitHub release when version is new
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          ARCHIVE: ${{ needs.build.outputs.archive }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to publish."
+            exit 0
+          fi
+          gh release create "$tag" "release/$ARCHIVE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Yabai Menu $VERSION" \
+            --generate-notes
