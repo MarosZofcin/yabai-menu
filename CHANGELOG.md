@@ -2,6 +2,17 @@
 
 All notable changes to Yabai Menu are documented in this file.
 
+## [Unreleased]
+
+### Documentation
+
+- Add a beginner-first explanation of tiling, BSP groups, visual window moves,
+  balancing, Undo, and floating applications.
+- Add step-by-step macOS Privacy & Security instructions for Accessibility and
+  Input Monitoring, including permission verification and recovery steps.
+- Explain the scope of global input monitoring, local diagnostic data, Git
+  synchronization, and the absence of automatic telemetry uploads.
+
 ## [1.0.2] - 2026-08-27
 
 ### Added
@@ -56,6 +67,7 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
+[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.2...HEAD
 [1.0.2]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.0.0

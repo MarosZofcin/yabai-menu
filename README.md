@@ -12,6 +12,40 @@ user to learn yabai commands.
 > [!IMPORTANT]
 > This first release is intentionally opinionated. It expects a Git repository at `~/dotfiles` and a yabai configuration at `~/dotfiles/yabai/yabairc`, normally linked from `~/.config/yabai/yabairc`. See **Current scope** before installing.
 
+## New to tiling? Start here
+
+On a normal Mac, windows behave like sheets of paper on a desk. They can overlap,
+leave unused gaps, and stay wherever you dragged them. A tiling window manager
+does the arranging for you. When two windows are open, they may each receive half
+of the screen. Open a third and one of those halves is divided again. Close a
+window and the others automatically fill the space it left behind.
+
+**yabai is the program that performs this automatic arrangement.** Yabai Menu
+does not replace yabai. It gives yabai a small menu-bar interface and makes part
+of its normally invisible layout visible and controllable with the mouse.
+
+A beginner can think of the main actions like this:
+
+| If you want to… | Use… | What happens |
+|---|---|---|
+| understand why some windows resize together | **Control+Shift+hover** | a cyan frame shows the smallest group containing the window |
+| place one tiled window beside another | **Control+Option+drag** | a green preview shows the new position before yabai moves it |
+| make uneven tiles similar in size again | **Balance Current Space** | yabai resets the split proportions on the current desktop |
+| reverse the last supported visual move | **Undo Last Warp** | the moved window returns to its recorded previous neighbour |
+| let one application behave like a normal movable macOS window | **Float current app** | the application is excluded from automatic tiling |
+
+For example, suppose Mail occupies the left half of the screen while Safari and
+Notes share the right half. The three windows are not merely rectangles: they
+form a hidden family tree. Safari and Notes are a smaller pair inside the larger
+pair made from Mail and the entire right side. Showing that relationship is
+useful because it explains which windows will change size together.
+
+The new visual tools are interesting because they do not invent a second layout
+system. Yabai Menu reconstructs yabai's hidden BSP relationships, draws
+click-through previews over the real windows, and still asks yabai to perform
+every actual move. If the relationship cannot be determined safely, the app
+refuses the operation instead of guessing.
+
 ## What is dynamic tiling?
 
 Traditional desktop window management is manual: every window opens at an arbitrary position and the user repeatedly drags and resizes it. Static tiling improves this with a fixed set of predefined zones, but those zones do not naturally adapt as windows come and go.
@@ -199,18 +233,109 @@ The overlays work across displays and Spaces, stay click-through, and use
 yabai's own operations for every layout mutation. Yabai remains the only tiling
 engine and the source of truth.
 
-### Permissions and troubleshooting
+## macOS Privacy & Security permissions, step by step
 
-The visual controls need both **Accessibility** and **Input Monitoring** in
-System Settings. Yabai Menu requests them, shows the state of each permission
-in its menu, and provides links to the correct settings pages. Once both are
-allowed, the global mouse listener starts automatically.
+The visual controls need two macOS permissions: **Accessibility** and **Input
+Monitoring**. These names can sound alarming, so this section explains exactly
+why they are needed, how to enable them, and what Yabai Menu does with them.
 
-Detailed interaction logging is off by default. If a problem needs diagnosing,
-enable **Detailed Diagnostic Logging**, reproduce it once, then choose **Export
-Diagnostics to Desktop**. The resulting text report is designed to provide the
-input, BSP, coordinate, yabai-command, and before/after information needed to
-diagnose the behavior without a screen recording.
+Install the app in `/Applications` before granting permissions. This helps macOS
+remember the copy you will actually use instead of a temporary copy left in
+Downloads. Open `Yabai Menu.app`; its square-grid icon appears in the menu bar,
+not in the Dock.
+
+### 1. Allow Accessibility
+
+Accessibility permission lets an app inspect and control the macOS user
+interface. Yabai Menu needs it to identify the window under the pointer and to
+prevent the ordinary free-moving window drag while a tiled drag-and-warp is in
+progress. yabai needs its own Accessibility permission to resize and move the
+windows after Yabai Menu sends it a command.
+
+1. Click the **Yabai Menu** icon in the menu bar.
+2. If the menu says `Accessibility: Required`, choose **Open Accessibility
+   Settings**.
+3. Alternatively, open **Apple menu → System Settings → Privacy & Security →
+   Accessibility**. You may need to scroll down in the sidebar.
+4. If **Yabai Menu** is already listed, turn its switch on.
+5. If it is not listed, click the **+** button, authenticate with Touch ID or an
+   administrator password, choose `/Applications/Yabai Menu.app`, and click
+   **Open**. Then turn its switch on.
+6. Make sure **yabai** is also allowed in this list. If it is missing, start the
+   yabai service once and follow yabai's permission prompt.
+
+Apple treats Accessibility as a powerful permission. Grant it only after you
+have decided that you trust the application and its source. You can revoke it at
+any time by returning to the same settings page and turning the switch off.
+
+### 2. Allow Input Monitoring
+
+Input Monitoring allows an app to notice mouse, trackpad, or keyboard activity
+while another application is active. Yabai Menu needs it because
+Control+Shift+hover and Control+Option+drag must work while the pointer is over
+Safari, Terminal, Finder, or any other tiled app rather than over Yabai Menu.
+
+1. Click the **Yabai Menu** icon in the menu bar.
+2. If the menu says `Input Monitoring: Required`, choose **Open Input Monitoring
+   Settings**.
+3. Alternatively, open **Apple menu → System Settings → Privacy & Security →
+   Input Monitoring**.
+4. Turn on **Yabai Menu**. If it is absent, click **+**, select
+   `/Applications/Yabai Menu.app`, click **Open**, and enable it.
+5. If macOS asks you to quit and reopen the app, accept. Otherwise choose **Quit
+   Yabai Menu** from its menu and open it again yourself.
+
+The current Yabai Menu code listens only for mouse movement, the left mouse
+button, dragging, and changes to modifier keys such as Control, Shift, and
+Option. It does not subscribe to ordinary character key presses and does not
+record what you type.
+
+### 3. Confirm that both permissions are working
+
+1. Open the Yabai Menu menu again.
+2. Confirm that it shows `Accessibility: Allowed`, `Input Monitoring: Allowed`,
+   and `BSP tools: Ready`.
+3. Choose **Test BSP Highlight in 3 Seconds**.
+4. Move the pointer over an ordinary tiled window and wait. A cyan frame should
+   briefly appear around its nearest BSP group.
+
+Yabai Menu checks the permission state repeatedly and starts its mouse listener
+automatically once both permissions are active. Restarting the app is still the
+most reliable way to make macOS apply a newly granted permission. yabai's own
+documentation also requires restarting yabai after its Accessibility permission
+is granted.
+
+### If the switch is on but the feature still does not work
+
+- Quit Yabai Menu, turn its permission off and on again, then reopen it.
+- If the app was moved or replaced after permission was granted, remove the old
+  Yabai Menu entry with the **−** button and add the copy from `/Applications`
+  again. A newly built ad-hoc-signed version can sometimes need fresh approval.
+- Restart yabai after enabling its Accessibility permission.
+- Confirm that the current Space uses the `bsp` layout. The visual tree tools do
+  not apply to floating Spaces, floating windows, or ambiguous stacked windows.
+- Use **Test BSP Highlight in 3 Seconds** before trying drag-and-warp. This
+  separates a permission/listener problem from a drag-target problem.
+
+### Privacy and diagnostic data
+
+Yabai Menu has no telemetry service and does not upload mouse events, typed
+text, window details, or diagnostic logs. Its normal Git synchronization pushes
+only the configured dotfiles changes to the Git remote that the user already
+set up. Whether that remote repository is private or public is controlled on
+the Git hosting account, not by Yabai Menu.
+
+**Detailed Diagnostic Logging** is off by default. When enabled, it can record
+application/window metadata, pointer coordinates, modifier and drag decisions,
+the reconstructed BSP tree, yabai commands, and before/after state. The rotating
+log stays locally at `~/Library/Logs/Yabai Menu/interaction.jsonl`. **Export
+Diagnostics to Desktop** creates a local text file for the user to inspect and
+share manually; nothing is sent automatically. Turn detailed logging off again
+after reproducing a problem if that information is sensitive.
+
+Apple's own explanations of these permissions are available in
+[Accessibility access](https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac)
+and [Input Monitoring](https://support.apple.com/guide/mac-help/control-access-to-input-monitoring-on-mac-mchl4cedafb6/mac).
 
 ## Detailed behavior
 
@@ -351,9 +476,7 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 1. Download the versioned `Yabai-Menu-<version>.zip` asset from Releases. Do not download GitHub's automatic “Source code” archives.
 2. Unzip and move `Yabai Menu.app` to `/Applications`.
 3. Open the app. It appears only in the menu bar.
-4. Accept the Accessibility and Input Monitoring requests and enable **Yabai
-   Menu** in both System Settings panes. The menu shows when each permission is
-   active.
+4. Follow the complete [Privacy & Security permission guide](#macos-privacy--security-permissions-step-by-step). Enable **Yabai Menu** under both Accessibility and Input Monitoring, and make sure yabai has its own Accessibility permission.
 5. Enable **Launch Yabai Menu at Login** if you want background synchronization after login and wake.
 
 The downloadable app is ad-hoc signed for local use. A paid Apple Developer certificate is not required. If macOS blocks the first launch, Control-click the app and choose **Open**.
