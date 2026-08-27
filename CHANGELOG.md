@@ -7,8 +7,8 @@ All notable changes to Yabai Menu are documented in this file.
 ### Added
 
 - Option-click BSP branch inspection with a transparent, click-through overlay.
-- Automatic Input Monitoring permission request and a persistent diagnostic
-  status for the global Option-click listener.
+- Automatic Accessibility permission request, suppression of native macOS
+  Option-click behavior, and a persistent diagnostic listener status.
 - Repeated Option-clicks on the same tiled window advance from its closest
   parent branch to the complete current BSP tree.
 - Conservative reconstruction checks and synthetic self-tests for BSP split
