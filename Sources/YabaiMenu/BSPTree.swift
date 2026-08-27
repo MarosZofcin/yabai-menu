@@ -31,6 +31,8 @@ struct BSPWindowSnapshot: Decodable, Equatable, Sendable {
     let splitType: BSPSplitAxis
     let splitChild: BSPSplitChild
     let stackIndex: Int
+    let hasAXReference: Bool
+    let isVisible: Bool
     let isFloating: Bool
     let isMinimized: Bool
     let isHidden: Bool
@@ -43,6 +45,8 @@ struct BSPWindowSnapshot: Decodable, Equatable, Sendable {
         case splitType = "split-type"
         case splitChild = "split-child"
         case stackIndex = "stack-index"
+        case hasAXReference = "has-ax-reference"
+        case isVisible = "is-visible"
         case isFloating = "is-floating"
         case isMinimized = "is-minimized"
         case isHidden = "is-hidden"
@@ -112,19 +116,36 @@ struct BSPTreeResolver {
         guard let target = snapshots.first(where: { $0.id == targetWindowID }) else {
             throw BSPTreeError.targetNotFound
         }
-        guard !target.isFloating, !target.isMinimized, !target.isHidden else {
+        guard target.hasAXReference,
+              target.isVisible,
+              !target.isFloating,
+              !target.isMinimized,
+              !target.isHidden else {
             throw BSPTreeError.targetNotTiled
         }
 
-        let relevant = snapshots.filter {
+        let eligible = snapshots.filter {
             $0.space == target.space
                 && $0.display == target.display
+                && $0.hasAXReference
+                && $0.isVisible
                 && !$0.isFloating
                 && !$0.isMinimized
                 && !$0.isHidden
                 && $0.frame.w > 0
                 && $0.frame.h > 0
         }
+        // yabai 7.x can include stale or unmanaged window records in a Space
+        // query. They commonly report `is-floating: false` even though they
+        // have no AX reference, are not visible, and carry no BSP split
+        // relationship. When an actual multi-leaf BSP tree exists, retain
+        // only records that participate in one of those split relationships.
+        let hasSplitRelationships = eligible.contains {
+            $0.splitType != .none || $0.splitChild != .none
+        }
+        let relevant = hasSplitRelationships
+            ? eligible.filter { $0.splitType != .none && $0.splitChild != .none }
+            : eligible
         guard Set(relevant.map(\.id)).count == relevant.count else {
             throw BSPTreeError.hierarchyCouldNotBeResolved
         }
