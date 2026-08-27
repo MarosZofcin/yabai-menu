@@ -3,6 +3,11 @@ import CoreGraphics
 
 @MainActor
 final class BranchHighlightController {
+    private enum RequestMode {
+        case optionClick
+        case diagnostic
+    }
+
     private let yabai: YabaiController
     private let statusHandler: (String) -> Void
     private let queryQueue = DispatchQueue(label: "sk.maroszofcin.YabaiMenu.bsp-query", qos: .userInitiated)
@@ -102,6 +107,14 @@ final class BranchHighlightController {
         resetAndHide()
     }
 
+    func runDiagnostic() {
+        resetAndHide()
+        statusHandler("BSP test: Point at a tiled window — checking in 3 seconds…")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.requestHighlight(mode: .diagnostic)
+        }
+    }
+
     fileprivate func handleMouseDown(flags: CGEventFlags) {
         let relevantFlags = flags.intersection([.maskAlternate, .maskControl, .maskCommand, .maskShift])
         guard relevantFlags == .maskAlternate else {
@@ -111,25 +124,40 @@ final class BranchHighlightController {
             return
         }
 
-        statusHandler("BSP highlight: Option-click detected; reading yabai…")
+        requestHighlight(mode: .optionClick)
+    }
+
+    private func requestHighlight(mode: RequestMode) {
+        if mode == .optionClick {
+            statusHandler("BSP highlight: Option-click detected; reading yabai…")
+        } else {
+            statusHandler("BSP test: Reading yabai at the pointer…")
+        }
         let yabai = self.yabai
         queryQueue.async { [weak self] in
             let result = Result { try yabai.bspBranchesAtMouse() }
             DispatchQueue.main.async {
-                self?.consume(result)
+                self?.consume(result, mode: mode)
             }
         }
     }
 
-    private func consume(_ result: Result<BSPBranchSelection, Error>) {
-        guard Self.optionIsPressed() else {
+    private func consume(
+        _ result: Result<BSPBranchSelection, Error>,
+        mode: RequestMode
+    ) {
+        if mode == .optionClick, !Self.optionIsPressed() {
             resetAndHide()
             return
         }
 
         switch result {
         case .success(let selection):
-            if lastWindowID == selection.windowID, lastSpace == selection.space {
+            if mode == .diagnostic {
+                lastWindowID = selection.windowID
+                lastSpace = selection.space
+                branchLevel = 0
+            } else if lastWindowID == selection.windowID, lastSpace == selection.space {
                 branchLevel = min(branchLevel + 1, selection.branches.count - 1)
             } else {
                 lastWindowID = selection.windowID
@@ -142,15 +170,23 @@ final class BranchHighlightController {
                       display: selection.display
                   ) else {
                 resetAndHide()
+                let prefix = mode == .diagnostic ? "BSP test" : "BSP highlight"
+                statusHandler("\(prefix): Could not map the yabai display to a macOS screen")
                 return
             }
             showOverlay(frame: frame, level: branchLevel)
-            statusHandler("BSP highlight: Branch \(branchLevel + 1) of \(selection.branches.count)")
-            startReleaseTimer()
+            if mode == .diagnostic {
+                statusHandler("BSP test: Overlay displayed — yabai query works")
+                startDiagnosticHideTimer()
+            } else {
+                statusHandler("BSP highlight: Branch \(branchLevel + 1) of \(selection.branches.count)")
+                startReleaseTimer()
+            }
 
         case .failure(let error):
             resetAndHide()
-            statusHandler("BSP highlight: \(error.localizedDescription)")
+            let prefix = mode == .diagnostic ? "BSP test" : "BSP highlight"
+            statusHandler("\(prefix): \(error.localizedDescription)")
         }
     }
 
@@ -190,6 +226,13 @@ final class BranchHighlightController {
         guard releaseTimer == nil else { return }
         releaseTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
             guard !Self.optionIsPressed() else { return }
+            Task { @MainActor in self?.resetAndHide() }
+        }
+    }
+
+    private func startDiagnosticHideTimer() {
+        releaseTimer?.invalidate()
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
             Task { @MainActor in self?.resetAndHide() }
         }
     }
