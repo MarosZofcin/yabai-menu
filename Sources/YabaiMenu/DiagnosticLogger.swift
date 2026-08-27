@@ -53,7 +53,7 @@ final class DiagnosticLogger: @unchecked Sendable {
     }
 
     func exportReport(systemSnapshot: String) throws -> URL {
-        let log = queue.sync {
+        let logContent = queue.sync {
             let previousURL = logURL.deletingLastPathComponent().appendingPathComponent("interaction.previous.jsonl")
             let previous = (try? String(contentsOf: previousURL, encoding: .utf8)) ?? "<no previous segment>\n"
             let current = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "<no current interaction log>\n"
@@ -72,7 +72,7 @@ final class DiagnosticLogger: @unchecked Sendable {
         \(systemSnapshot)
 
         ===== INTERACTION LOG (JSON LINES) =====
-        \(log)
+        \(logContent)
         """
         try report.write(to: destination, atomically: true, encoding: .utf8)
         log("diagnostic_report_exported", ["path": destination.path])

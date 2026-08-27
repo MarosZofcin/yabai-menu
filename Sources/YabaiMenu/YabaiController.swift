@@ -131,7 +131,7 @@ struct YabaiController: Sendable {
     }
 
     func bspBranchesAtMouse() throws -> BSPBranchSelection {
-        guard let executableURL else {
+        guard executableURL != nil else {
             throw AppError.message("yabai was not found in /opt/homebrew/bin or /usr/local/bin.")
         }
 
