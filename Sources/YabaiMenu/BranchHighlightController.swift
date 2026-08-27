@@ -2,346 +2,685 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
+private let bspInspectModifiers: CGEventFlags = [.maskControl, .maskShift]
+private let bspDragModifiers: CGEventFlags = [.maskControl, .maskAlternate]
+private let bspRelevantModifiers: CGEventFlags = [.maskControl, .maskShift, .maskAlternate, .maskCommand]
+
+private func normalizedBSPModifiers(_ flags: CGEventFlags) -> CGEventFlags {
+    flags.intersection(bspRelevantModifiers)
+}
+
 @MainActor
 final class BranchHighlightController {
-    private enum RequestMode {
-        case optionClick
-        case diagnostic
-    }
-
     private let yabai: YabaiController
+    private let diagnostics: DiagnosticLogger
     private let statusHandler: (String) -> Void
     private let queryQueue = DispatchQueue(label: "sk.maroszofcin.YabaiMenu.bsp-query", qos: .userInitiated)
 
+    private let branchOverlay = BranchOverlayPanel(
+        strokeColor: NSColor.systemCyan,
+        fillColor: NSColor.systemCyan.withAlphaComponent(0.10),
+        lineWidth: 6
+    )
+    private let sourceOverlay = BranchOverlayPanel(
+        strokeColor: NSColor.systemBlue,
+        fillColor: NSColor.systemBlue.withAlphaComponent(0.08),
+        lineWidth: 5
+    )
+    private let targetOverlay = BranchOverlayPanel(
+        strokeColor: NSColor.systemGreen,
+        fillColor: NSColor.systemGreen.withAlphaComponent(0.22),
+        lineWidth: 5
+    )
+
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
-    private var eventTapUserInfo: UnsafeMutableRawPointer?
-    private var releaseTimer: Timer?
-    private var notificationObservers: [NSObjectProtocol] = []
-    private var overlayWindow: BranchOverlayPanel?
-    private var lastWindowID: Int?
-    private var lastSpace: Int?
-    private var branchLevel = 0
+    private var currentModifiers: CGEventFlags = []
+    private var lastLoggedModifiers: CGEventFlags = []
+    private var latestPointer = CGPoint.zero
 
-    init(yabai: YabaiController, statusHandler: @escaping (String) -> Void) {
+    private var hoverGeneration = 0
+    private var hoverQueryInFlight = false
+    private var lastHoverQueryAt = Date.distantPast
+    private var lastHoverWindowID: Int?
+
+    private var dragToken: UUID?
+    private var dragMouseIsDown = false
+    private var dragIsFinalizing = false
+    private var dragSource: BSPBranchSelection?
+    private var dragTarget: BSPWindowSnapshot?
+    private var dragDirection: BSPWarpDirection?
+    private var dragTargetQueryInFlight = false
+    private var lastDragTargetQueryAt = Date.distantPast
+    private var lastUndoRecord: BSPWarpUndoRecord?
+
+    private var status = "BSP tools: Starting…"
+
+    var canUndo: Bool { lastUndoRecord != nil }
+
+    init(
+        yabai: YabaiController,
+        diagnostics: DiagnosticLogger,
+        statusHandler: @escaping (String) -> Void
+    ) {
         self.yabai = yabai
+        self.diagnostics = diagnostics
         self.statusHandler = statusHandler
     }
 
     func start() {
         guard eventTap == nil else { return }
-
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        guard AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary) else {
-            statusHandler("BSP highlight: Allow Accessibility, then relaunch Yabai Menu")
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let trusted = AXIsProcessTrustedWithOptions(options)
+        diagnostics.log("accessibility_checked", ["trusted": trusted])
+        guard trusted else {
+            updateStatus("BSP tools: Accessibility permission required")
             return
         }
 
-        let eventMask = (CGEventMask(1) << CGEventType.leftMouseDown.rawValue)
-            | (CGEventMask(1) << CGEventType.leftMouseUp.rawValue)
-        let userInfo = Unmanaged.passRetained(self).toOpaque()
+        let mask = [
+            CGEventType.mouseMoved,
+            .leftMouseDown,
+            .leftMouseDragged,
+            .leftMouseUp,
+            .flagsChanged
+        ].reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
+
+        let userInfo = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: branchHighlightEventTapCallback,
+            eventsOfInterest: mask,
+            callback: bspEventTapCallback,
             userInfo: userInfo
         ) else {
-            Unmanaged<BranchHighlightController>.fromOpaque(userInfo).release()
-            statusHandler("BSP highlight: Accessibility listener could not start; relaunch the app")
+            diagnostics.log("event_tap_creation_failed")
+            updateStatus("BSP tools: Could not start global mouse listener")
             return
         }
-        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-            CFMachPortInvalidate(tap)
-            Unmanaged<BranchHighlightController>.fromOpaque(userInfo).release()
-            statusHandler("BSP highlight: Accessibility listener could not start")
-            return
-        }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         eventTap = tap
         eventTapSource = source
-        eventTapUserInfo = userInfo
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        statusHandler("BSP highlight: Ready — Option-click a tiled window")
-
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        notificationObservers.append(
-            workspaceCenter.addObserver(
-                forName: NSWorkspace.activeSpaceDidChangeNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor in self?.resetAndHide() }
-            }
-        )
-        notificationObservers.append(
-            NotificationCenter.default.addObserver(
-                forName: NSApplication.didChangeScreenParametersNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor in self?.resetAndHide() }
-            }
-        )
+        diagnostics.log("event_tap_started", [
+            "inspect_modifiers": "control+shift",
+            "drag_modifiers": "control+option"
+        ])
+        updateStatus("BSP tools: Ready")
     }
 
     func stop() {
+        cancelInteractions(reason: "application_stopping")
+        if let source = eventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
-            CFMachPortInvalidate(eventTap)
-            self.eventTap = nil
         }
-        if let eventTapSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), eventTapSource, .commonModes)
-            self.eventTapSource = nil
-        }
-        if let eventTapUserInfo {
-            Unmanaged<BranchHighlightController>.fromOpaque(eventTapUserInfo).release()
-            self.eventTapUserInfo = nil
-        }
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        for observer in notificationObservers {
-            workspaceCenter.removeObserver(observer)
-            NotificationCenter.default.removeObserver(observer)
-        }
-        notificationObservers.removeAll()
-        resetAndHide()
+        eventTapSource = nil
+        eventTap = nil
+        diagnostics.log("event_tap_stopped")
     }
 
     func runDiagnostic() {
-        resetAndHide()
-        statusHandler("BSP test: Point at a tiled window — checking in 3 seconds…")
+        diagnostics.log("highlight_test_scheduled", ["delay_seconds": 3])
+        updateStatus("BSP test: point at a tiled window…")
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            self?.requestHighlight(mode: .diagnostic)
+            guard let self else { return }
+            let pointer = NSEvent.mouseLocation
+            self.queryBranch(at: pointer, purpose: "diagnostic") { result in
+                switch result {
+                case .success(let selection):
+                    guard let branch = selection.branches.first else { return }
+                    self.branchOverlay.show(yabaiFrame: branch.frame, display: selection.display)
+                    self.diagnostics.log("highlight_test_succeeded", [
+                        "window_id": selection.windowID,
+                        "branch_window_ids": branch.windowIDs,
+                        "branch_frame": branch.frame
+                    ])
+                    self.updateStatus("BSP test: highlighted windows \(branch.windowIDs.sorted())")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                        self?.branchOverlay.hide()
+                    }
+                case .failure(let error):
+                    self.diagnostics.log("highlight_test_failed", ["error": error.localizedDescription])
+                    self.updateStatus("BSP test failed: \(error.localizedDescription)")
+                    NSSound.beep()
+                }
+            }
         }
     }
 
-    fileprivate func handleMouseDown(flags: CGEventFlags) {
-        let relevantFlags = flags.intersection([.maskAlternate, .maskControl, .maskCommand, .maskShift])
-        guard relevantFlags == .maskAlternate else {
-            // A different modifier chord must never leave a stale branch
-            // visible while the user performs an unrelated click.
-            resetAndHide()
-            return
-        }
-
-        requestHighlight(mode: .optionClick)
-    }
-
-    private func requestHighlight(mode: RequestMode) {
-        if mode == .optionClick {
-            statusHandler("BSP highlight: Option-click detected; reading yabai…")
-        } else {
-            statusHandler("BSP test: Reading yabai at the pointer…")
-        }
-        let yabai = self.yabai
+    func balanceCurrentSpace() {
+        diagnostics.log("balance_ui_requested")
+        updateStatus("BSP tools: Balancing current Space…")
+        let yabai = yabai
         queryQueue.async { [weak self] in
-            let result = Result { try yabai.bspBranchesAtMouse() }
+            let result = Result { try yabai.balanceFocusedSpace() }
             DispatchQueue.main.async {
-                self?.consume(result, mode: mode)
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.diagnostics.log("balance_ui_succeeded")
+                    self.updateStatus("BSP tools: Current Space balanced")
+                case .failure(let error):
+                    self.diagnostics.log("balance_ui_failed", ["error": error.localizedDescription])
+                    self.updateStatus("Balance failed: \(error.localizedDescription)")
+                    NSSound.beep()
+                }
             }
         }
     }
 
-    private func consume(
-        _ result: Result<BSPBranchSelection, Error>,
-        mode: RequestMode
-    ) {
-        if mode == .optionClick, !Self.optionIsPressed() {
-            resetAndHide()
+    func undoLastWarp() {
+        guard let record = lastUndoRecord else { return }
+        lastUndoRecord = nil
+        diagnostics.log("undo_ui_requested", ["source_window_id": record.sourceWindowID])
+        updateStatus("BSP tools: Undoing last warp…")
+        let yabai = yabai
+        queryQueue.async { [weak self] in
+            let result = Result { try yabai.undoWarp(record) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.diagnostics.log("undo_ui_succeeded")
+                    self.updateStatus("BSP tools: Last warp undone")
+                case .failure(let error):
+                    self.diagnostics.log("undo_ui_failed", ["error": error.localizedDescription])
+                    self.updateStatus("Undo failed: \(error.localizedDescription)")
+                    NSSound.beep()
+                }
+            }
+        }
+    }
+
+    fileprivate func receive(type: CGEventType, location: CGPoint, flags: CGEventFlags) {
+        latestPointer = location
+        currentModifiers = normalizedBSPModifiers(flags)
+        if currentModifiers != lastLoggedModifiers {
+            diagnostics.log("modifier_state_changed", [
+                "event_type": Int(type.rawValue),
+                "raw_flags": flags.rawValue,
+                "normalized_flags": currentModifiers.rawValue,
+                "pointer": location
+            ])
+            lastLoggedModifiers = currentModifiers
+        }
+        if type == .leftMouseDown || type == .leftMouseDragged || type == .leftMouseUp {
+            diagnostics.log("mouse_button_event", [
+                "event_type": Int(type.rawValue),
+                "modifiers": currentModifiers.rawValue,
+                "pointer": location,
+                "suppressed": currentModifiers == bspDragModifiers
+            ])
+        }
+
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            diagnostics.log("event_tap_disabled", ["reason": type == .tapDisabledByTimeout ? "timeout" : "user_input"])
+            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
+            updateStatus("BSP tools: Mouse listener recovered")
             return
         }
 
-        switch result {
-        case .success(let selection):
-            if mode == .diagnostic {
-                lastWindowID = selection.windowID
-                lastSpace = selection.space
-                branchLevel = 0
-            } else if lastWindowID == selection.windowID, lastSpace == selection.space {
-                branchLevel = min(branchLevel + 1, selection.branches.count - 1)
-            } else {
-                lastWindowID = selection.windowID
-                lastSpace = selection.space
-                branchLevel = 0
+        if currentModifiers == bspInspectModifiers {
+            if dragToken != nil { cancelDrag(reason: "inspect_chord_selected") }
+            if type == .mouseMoved || type == .flagsChanged {
+                requestHoverIfNeeded()
             }
-            guard selection.branches.indices.contains(branchLevel),
-                  let frame = appKitRect(
-                      for: selection.branches[branchLevel].frame,
-                      display: selection.display
-                  ) else {
-                resetAndHide()
-                let prefix = mode == .diagnostic ? "BSP test" : "BSP highlight"
-                statusHandler("\(prefix): Could not map the yabai display to a macOS screen")
+            return
+        }
+
+        if currentModifiers == bspDragModifiers {
+            branchOverlay.hide()
+            hoverGeneration += 1
+            lastHoverWindowID = nil
+            switch type {
+            case .leftMouseDown: beginDrag(at: location)
+            case .leftMouseDragged: updateDrag(at: location)
+            case .leftMouseUp: finishDrag(at: location)
+            default: break
+            }
+            return
+        }
+
+        if type == .flagsChanged || type == .mouseMoved {
+            hideHover(reason: "inspect_modifiers_released")
+        }
+        if dragToken != nil && !dragIsFinalizing && currentModifiers != bspDragModifiers {
+            cancelDrag(reason: "drag_modifiers_released")
+        }
+    }
+
+    private func requestHoverIfNeeded() {
+        let now = Date()
+        guard !hoverQueryInFlight,
+              now.timeIntervalSince(lastHoverQueryAt) >= 0.12 else { return }
+        hoverQueryInFlight = true
+        lastHoverQueryAt = now
+        hoverGeneration += 1
+        let generation = hoverGeneration
+        let pointer = latestPointer
+        diagnostics.log("hover_query_started", ["generation": generation, "pointer": pointer])
+        queryBranch(at: pointer, purpose: "hover") { [weak self] result in
+            guard let self else { return }
+            self.hoverQueryInFlight = false
+            guard generation == self.hoverGeneration,
+                  self.currentModifiers == bspInspectModifiers else {
+                self.diagnostics.log("hover_query_discarded", ["generation": generation])
                 return
             }
-            showOverlay(frame: frame, level: branchLevel)
-            if mode == .diagnostic {
-                statusHandler("BSP test: Overlay displayed — yabai query works")
-                startDiagnosticHideTimer()
-            } else {
-                statusHandler("BSP highlight: Branch \(branchLevel + 1) of \(selection.branches.count)")
-                startReleaseTimer()
+            switch result {
+            case .success(let selection):
+                guard let branch = selection.branches.first else { return }
+                self.branchOverlay.show(yabaiFrame: branch.frame, display: selection.display)
+                if self.lastHoverWindowID != selection.windowID {
+                    self.lastHoverWindowID = selection.windowID
+                    self.diagnostics.log("hover_branch_shown", [
+                        "window_id": selection.windowID,
+                        "branch_window_ids": branch.windowIDs,
+                        "branch_frame": branch.frame,
+                        "pointer": pointer
+                    ])
+                    self.updateStatus("Inspecting nearest branch: \(branch.windowIDs.sorted())")
+                }
+            case .failure(let error):
+                self.branchOverlay.hide()
+                self.lastHoverWindowID = nil
+                self.diagnostics.log("hover_query_failed", [
+                    "generation": generation,
+                    "pointer": pointer,
+                    "error": error.localizedDescription
+                ])
+                self.updateStatus("Inspect: \(error.localizedDescription)")
             }
-
-        case .failure(let error):
-            resetAndHide()
-            let prefix = mode == .diagnostic ? "BSP test" : "BSP highlight"
-            statusHandler("\(prefix): \(error.localizedDescription)")
         }
     }
 
-    private func showOverlay(frame: CGRect, level: Int) {
-        let panel: BranchOverlayPanel
-        if let overlayWindow {
-            panel = overlayWindow
-        } else {
-            panel = BranchOverlayPanel()
-            overlayWindow = panel
-        }
-        let expandedFrame = frame.insetBy(dx: -4, dy: -4)
-        panel.setFrame(expandedFrame, display: true)
-        panel.overlayView.color = Self.colors[level % Self.colors.count]
-        panel.orderFrontRegardless()
+    private func hideHover(reason: String) {
+        guard branchOverlay.isVisible || lastHoverWindowID != nil else { return }
+        hoverGeneration += 1
+        lastHoverWindowID = nil
+        branchOverlay.hide()
+        diagnostics.log("hover_hidden", ["reason": reason])
+        updateStatus("BSP tools: Ready")
     }
 
-    private func appKitRect(
-        for yabaiRect: CGRect,
-        display: BSPDisplaySnapshot
-    ) -> CGRect? {
-        guard let screen = NSScreen.screens.first(where: { screen in
-            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
-                return false
+    private func beginDrag(at point: CGPoint) {
+        cancelDrag(reason: "new_drag")
+        let token = UUID()
+        dragToken = token
+        dragMouseIsDown = true
+        dragIsFinalizing = false
+        latestPointer = point
+        diagnostics.log("drag_started", ["token": token.uuidString, "pointer": point])
+        updateStatus("BSP drag: Selecting source window…")
+        queryBranch(at: point, purpose: "drag_source") { [weak self] result in
+            guard let self,
+                  self.dragToken == token,
+                  self.dragMouseIsDown else { return }
+            switch result {
+            case .success(let selection):
+                self.dragSource = selection
+                self.sourceOverlay.show(yabaiFrame: selection.window.frame.rect, display: selection.display)
+                self.diagnostics.log("drag_source_selected", [
+                    "token": token.uuidString,
+                    "window_id": selection.windowID,
+                    "frame": selection.window.frame.rect,
+                    "space": selection.space,
+                    "display": selection.window.display
+                ])
+                self.updateStatus("BSP drag: Move over a target edge and release")
+                self.requestDragTargetIfNeeded(force: true)
+            case .failure(let error):
+                self.diagnostics.log("drag_source_failed", [
+                    "token": token.uuidString,
+                    "error": error.localizedDescription
+                ])
+                self.cancelDrag(reason: "source_query_failed")
+                self.updateStatus("BSP drag failed: \(error.localizedDescription)")
+                NSSound.beep()
             }
-            return number.uint32Value == display.id
-        }) else { return nil }
-
-        return BSPCoordinateConverter.appKitRect(
-            fromYabai: yabaiRect,
-            yabaiDisplayFrame: display.frame.rect,
-            appKitScreenFrame: screen.frame
-        )
-    }
-
-    private func startReleaseTimer() {
-        guard releaseTimer == nil else { return }
-        releaseTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
-            guard !Self.optionIsPressed() else { return }
-            Task { @MainActor in self?.resetAndHide() }
         }
     }
 
-    private func startDiagnosticHideTimer() {
-        releaseTimer?.invalidate()
-        releaseTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.resetAndHide() }
+    private func updateDrag(at point: CGPoint) {
+        latestPointer = point
+        guard dragToken != nil, dragMouseIsDown else { return }
+        requestDragTargetIfNeeded(force: false)
+    }
+
+    private func requestDragTargetIfNeeded(force: Bool) {
+        guard let token = dragToken,
+              let source = dragSource,
+              dragMouseIsDown,
+              !dragTargetQueryInFlight else { return }
+        let now = Date()
+        guard force || now.timeIntervalSince(lastDragTargetQueryAt) >= 0.10 else { return }
+        lastDragTargetQueryAt = now
+        dragTargetQueryInFlight = true
+        let queryPoint = latestPointer
+        let yabai = yabai
+        queryQueue.async { [weak self] in
+            let result = Result { try yabai.tiledWindowAtMouse() }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.dragTargetQueryInFlight = false
+                guard self.dragToken == token,
+                      self.dragMouseIsDown,
+                      let currentSource = self.dragSource,
+                      currentSource.windowID == source.windowID else { return }
+                switch result {
+                case .success(let target):
+                    guard target.id != source.windowID,
+                          target.space == source.space,
+                          target.display == source.window.display else {
+                        self.clearDragTarget(reason: "source_or_other_space")
+                        return
+                    }
+                    let direction = BSPWarpDirection.nearestEdge(to: queryPoint, in: target.frame.rect)
+                    let changed = self.dragTarget?.id != target.id || self.dragDirection != direction
+                    self.dragTarget = target
+                    self.dragDirection = direction
+                    self.targetOverlay.show(
+                        yabaiFrame: direction.previewFrame(in: target.frame.rect),
+                        display: source.display
+                    )
+                    if changed {
+                        self.diagnostics.log("drag_drop_zone_selected", [
+                            "token": token.uuidString,
+                            "source_window_id": source.windowID,
+                            "target_window_id": target.id,
+                            "direction": direction.rawValue,
+                            "pointer": queryPoint,
+                            "target_frame": target.frame.rect,
+                            "preview_frame": direction.previewFrame(in: target.frame.rect)
+                        ])
+                        self.updateStatus("Drop: \(direction.rawValue) of window \(target.id)")
+                    }
+                case .failure(let error):
+                    self.clearDragTarget(reason: "target_query_failed")
+                    self.diagnostics.log("drag_target_query_failed", [
+                        "token": token.uuidString,
+                        "pointer": queryPoint,
+                        "error": error.localizedDescription
+                    ])
+                }
+            }
         }
     }
 
-    private func resetAndHide() {
-        releaseTimer?.invalidate()
-        releaseTimer = nil
-        overlayWindow?.orderOut(nil)
-        lastWindowID = nil
-        lastSpace = nil
-        branchLevel = 0
+    private func finishDrag(at point: CGPoint) {
+        latestPointer = point
+        dragMouseIsDown = false
+        guard let token = dragToken,
+              let source = dragSource else {
+            cancelDrag(reason: "released_without_valid_target")
+            updateStatus("BSP drag cancelled: no valid target")
+            return
+        }
+        dragIsFinalizing = true
+        updateStatus("BSP drag: Verifying final drop target…")
+        diagnostics.log("drag_final_target_query_started", [
+            "token": token.uuidString,
+            "source_window_id": source.windowID,
+            "pointer": point,
+            "preview_target_window_id": dragTarget?.id as Any,
+            "preview_direction": dragDirection?.rawValue as Any
+        ])
+        let yabai = yabai
+        queryQueue.async { [weak self] in
+            let result = Result { try yabai.tiledWindowAtMouse() }
+            DispatchQueue.main.async {
+                guard let self,
+                      self.dragToken == token,
+                      self.dragIsFinalizing else { return }
+                switch result {
+                case .success(let target):
+                    guard target.id != source.windowID,
+                          target.space == source.space,
+                          target.display == source.window.display else {
+                        self.cancelDrag(reason: "invalid_final_target")
+                        self.updateStatus("BSP drag cancelled: final target was not valid")
+                        return
+                    }
+                    let direction = BSPWarpDirection.nearestEdge(to: point, in: target.frame.rect)
+                    self.diagnostics.log("drag_final_target_verified", [
+                        "token": token.uuidString,
+                        "target_window_id": target.id,
+                        "direction": direction.rawValue,
+                        "target_frame": target.frame.rect,
+                        "pointer": point
+                    ])
+                    self.commitWarp(token: token, source: source, target: target, direction: direction, point: point)
+                case .failure(let error):
+                    self.diagnostics.log("drag_final_target_failed", [
+                        "token": token.uuidString,
+                        "error": error.localizedDescription
+                    ])
+                    self.cancelDrag(reason: "final_target_query_failed")
+                    self.updateStatus("BSP drag cancelled: \(error.localizedDescription)")
+                    NSSound.beep()
+                }
+            }
+        }
     }
 
-    fileprivate func reenableEventTap() {
-        guard let eventTap else { return }
-        CGEvent.tapEnable(tap: eventTap, enable: true)
+    private func commitWarp(
+        token: UUID,
+        source: BSPBranchSelection,
+        target: BSPWindowSnapshot,
+        direction: BSPWarpDirection,
+        point: CGPoint
+    ) {
+        diagnostics.log("drag_drop_committed", [
+            "token": token.uuidString,
+            "source_window_id": source.windowID,
+            "target_window_id": target.id,
+            "direction": direction.rawValue,
+            "pointer": point
+        ])
+        dragToken = nil
+        dragIsFinalizing = false
+        dragSource = nil
+        dragTarget = nil
+        dragDirection = nil
+        dragTargetQueryInFlight = false
+        sourceOverlay.hide()
+        targetOverlay.hide()
+        updateStatus("BSP tools: Warping window…")
+
+        let yabai = yabai
+        queryQueue.async { [weak self] in
+            let result = Result { try yabai.warp(source: source, target: target, direction: direction) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let record):
+                    self.lastUndoRecord = record
+                    self.diagnostics.log("drag_warp_succeeded", [
+                        "source_window_id": source.windowID,
+                        "target_window_id": target.id,
+                        "direction": direction.rawValue,
+                        "exact_undo_available": record != nil
+                    ])
+                    self.updateStatus(
+                        record == nil
+                            ? "BSP tools: Window warped; exact Undo unavailable for the old branch"
+                            : "BSP tools: Window warped; Undo is available"
+                    )
+                case .failure(let error):
+                    self.lastUndoRecord = nil
+                    self.diagnostics.log("drag_warp_failed", [
+                        "source_window_id": source.windowID,
+                        "target_window_id": target.id,
+                        "direction": direction.rawValue,
+                        "error": error.localizedDescription
+                    ])
+                    self.updateStatus("Warp failed: \(error.localizedDescription)")
+                    NSSound.beep()
+                }
+            }
+        }
     }
 
-    private static func optionIsPressed() -> Bool {
-        CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate)
+    private func clearDragTarget(reason: String) {
+        if dragTarget != nil || dragDirection != nil {
+            diagnostics.log("drag_drop_zone_cleared", ["reason": reason])
+        }
+        dragTarget = nil
+        dragDirection = nil
+        targetOverlay.hide()
     }
 
-    private static let colors: [NSColor] = [
-        .systemCyan,
-        .systemOrange,
-        .systemPink,
-        .systemGreen,
-        .systemPurple,
-        .systemYellow
-    ]
+    private func cancelDrag(reason: String) {
+        guard dragToken != nil || dragSource != nil || dragTarget != nil else { return }
+        diagnostics.log("drag_cancelled", [
+            "reason": reason,
+            "token": dragToken?.uuidString ?? "none",
+            "source_window_id": dragSource?.windowID as Any,
+            "target_window_id": dragTarget?.id as Any
+        ])
+        dragToken = nil
+        dragMouseIsDown = false
+        dragIsFinalizing = false
+        dragSource = nil
+        dragTarget = nil
+        dragDirection = nil
+        dragTargetQueryInFlight = false
+        sourceOverlay.hide()
+        targetOverlay.hide()
+    }
+
+    private func cancelInteractions(reason: String) {
+        hideHover(reason: reason)
+        cancelDrag(reason: reason)
+        branchOverlay.hide()
+        sourceOverlay.hide()
+        targetOverlay.hide()
+    }
+
+    private func queryBranch(
+        at pointer: CGPoint,
+        purpose: String,
+        completion: @escaping (Result<BSPBranchSelection, Error>) -> Void
+    ) {
+        let yabai = yabai
+        let diagnostics = diagnostics
+        queryQueue.async {
+            let started = Date()
+            let result = Result { try yabai.bspBranchesAtMouse() }
+            diagnostics.log("branch_query_completed", [
+                "purpose": purpose,
+                "requested_pointer": pointer,
+                "duration_ms": Int(Date().timeIntervalSince(started) * 1000),
+                "succeeded": (try? result.get()) != nil
+            ])
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    private func updateStatus(_ newStatus: String) {
+        guard status != newStatus else { return }
+        status = newStatus
+        statusHandler(newStatus)
+    }
+
 }
 
-private let branchHighlightEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+private let bspEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
     guard let userInfo else { return Unmanaged.passUnretained(event) }
     let controller = Unmanaged<BranchHighlightController>.fromOpaque(userInfo).takeUnretainedValue()
-
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        Task { @MainActor in controller.reenableEventTap() }
-        return Unmanaged.passUnretained(event)
-    }
-
+    let location = event.location
     let flags = event.flags
-    let relevantFlags = flags.intersection([.maskAlternate, .maskControl, .maskCommand, .maskShift])
-    guard relevantFlags == .maskAlternate else {
-        return Unmanaged.passUnretained(event)
+    Task { @MainActor in
+        controller.receive(type: type, location: location, flags: flags)
     }
 
-    if type == .leftMouseDown {
-        Task { @MainActor in controller.handleMouseDown(flags: flags) }
-        // This Option-click is an application gesture, not a click intended
-        // for the target app. Suppressing it prevents macOS Option-click
-        // behavior from hiding an app, changing focus, or reflowing yabai.
-        return nil
-    }
-    if type == .leftMouseUp {
+    let modifiers = normalizedBSPModifiers(flags)
+    let isDragMouseEvent = type == .leftMouseDown || type == .leftMouseDragged || type == .leftMouseUp
+    if isDragMouseEvent && modifiers == bspDragModifiers {
         return nil
     }
     return Unmanaged.passUnretained(event)
 }
 
-private final class BranchOverlayPanel: NSPanel {
-    let overlayView = BranchOverlayView(frame: .zero)
+@MainActor
+private final class BranchOverlayPanel {
+    private let panel: NSPanel
+    private let overlayView: BranchOverlayView
 
-    init() {
-        super.init(
+    var isVisible: Bool { panel.isVisible }
+
+    init(strokeColor: NSColor, fillColor: NSColor, lineWidth: CGFloat) {
+        overlayView = BranchOverlayView(strokeColor: strokeColor, fillColor: fillColor, lineWidth: lineWidth)
+        panel = NSPanel(
             contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        overlayView.autoresizingMask = [.width, .height]
-        contentView = overlayView
-        backgroundColor = .clear
-        isOpaque = false
-        hasShadow = false
-        ignoresMouseEvents = true
-        hidesOnDeactivate = false
-        isReleasedWhenClosed = false
-        level = .screenSaver
-        // The panel follows the selected Space; it is deliberately not a
-        // canJoinAllSpaces panel, because a stale branch must not be visible
-        // after the user changes Spaces on this display.
-        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
+        panel.contentView = overlayView
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.hidesOnDeactivate = false
+        panel.level = .screenSaver
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.isReleasedWhenClosed = false
     }
 
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
+    func show(yabaiFrame: CGRect, display: BSPDisplaySnapshot) {
+        guard let screen = NSScreen.screens.first(where: { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                return false
+            }
+            return number.uint32Value == display.id
+        }), let frame = BSPCoordinateConverter.appKitRect(
+            fromYabai: yabaiFrame,
+            yabaiDisplayFrame: display.frame.rect,
+            appKitScreenFrame: screen.frame
+        ), frame.width > 0, frame.height > 0 else {
+            hide()
+            return
+        }
+        panel.setFrame(frame, display: true)
+        overlayView.needsDisplay = true
+        panel.orderFrontRegardless()
+    }
+
+    func hide() {
+        panel.orderOut(nil)
+    }
 }
 
 private final class BranchOverlayView: NSView {
-    var color: NSColor = .systemCyan {
-        didSet { needsDisplay = true }
+    private let strokeColor: NSColor
+    private let fillColor: NSColor
+    private let lineWidth: CGFloat
+
+    init(strokeColor: NSColor, fillColor: NSColor, lineWidth: CGFloat) {
+        self.strokeColor = strokeColor
+        self.fillColor = fillColor
+        self.lineWidth = lineWidth
+        super.init(frame: .zero)
     }
 
-    override var isOpaque: Bool { false }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let rect = bounds.insetBy(dx: 4, dy: 4)
-        guard rect.width > 0, rect.height > 0 else { return }
-        let path = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
-        color.withAlphaComponent(0.07).setFill()
-        path.fill()
-        color.withAlphaComponent(0.96).setStroke()
-        path.lineWidth = 5
+        fillColor.setFill()
+        bounds.fill()
+        strokeColor.setStroke()
+        let inset = lineWidth / 2
+        let path = NSBezierPath(rect: bounds.insetBy(dx: inset, dy: inset))
+        path.lineWidth = lineWidth
         path.stroke()
     }
 }

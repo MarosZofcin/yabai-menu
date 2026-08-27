@@ -15,6 +15,7 @@ enum SelfTests {
 
         try testBSPTreeResolution()
         try testBSPCoordinateConversion()
+        try testBSPWarpDirections()
 
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -356,6 +357,43 @@ enum SelfTests {
         ) == nil else {
             throw AppError.message("Invalid yabai display bounds produced an overlay rectangle.")
         }
+    }
+
+    private static func testBSPWarpDirections() throws {
+        let frame = CGRect(x: 100, y: 200, width: 400, height: 200)
+        let samples: [(CGPoint, BSPWarpDirection)] = [
+            (CGPoint(x: 105, y: 300), .west),
+            (CGPoint(x: 495, y: 300), .east),
+            (CGPoint(x: 300, y: 205), .north),
+            (CGPoint(x: 300, y: 395), .south)
+        ]
+        for (point, expected) in samples {
+            let actual = BSPWarpDirection.nearestEdge(to: point, in: frame)
+            guard actual == expected else {
+                throw AppError.message("Warp direction test failed at \(point): \(actual) != \(expected)")
+            }
+        }
+
+        try requireRect(
+            BSPWarpDirection.west.previewFrame(in: frame),
+            equals: CGRect(x: 100, y: 200, width: 200, height: 200),
+            label: "west drop preview"
+        )
+        try requireRect(
+            BSPWarpDirection.east.previewFrame(in: frame),
+            equals: CGRect(x: 300, y: 200, width: 200, height: 200),
+            label: "east drop preview"
+        )
+        try requireRect(
+            BSPWarpDirection.north.previewFrame(in: frame),
+            equals: CGRect(x: 100, y: 200, width: 400, height: 100),
+            label: "north drop preview"
+        )
+        try requireRect(
+            BSPWarpDirection.south.previewFrame(in: frame),
+            equals: CGRect(x: 100, y: 300, width: 400, height: 100),
+            label: "south drop preview"
+        )
     }
 
     private static func convertedRect(_ rect: CGRect?, label: String) throws -> CGRect {

@@ -60,9 +60,40 @@ struct BSPBranch: Equatable, Sendable {
 
 struct BSPBranchSelection: Sendable {
     let windowID: Int
+    let window: BSPWindowSnapshot
     let space: Int
     let display: BSPDisplaySnapshot
     let branches: [BSPBranch]
+}
+
+enum BSPWarpDirection: String, CaseIterable, Sendable {
+    case north
+    case east
+    case south
+    case west
+
+    static func nearestEdge(to point: CGPoint, in frame: CGRect) -> BSPWarpDirection {
+        let distances: [(BSPWarpDirection, CGFloat)] = [
+            (.west, abs(point.x - frame.minX)),
+            (.east, abs(frame.maxX - point.x)),
+            (.north, abs(point.y - frame.minY)),
+            (.south, abs(frame.maxY - point.y))
+        ]
+        return distances.min(by: { $0.1 < $1.1 })?.0 ?? .east
+    }
+
+    func previewFrame(in frame: CGRect) -> CGRect {
+        switch self {
+        case .west:
+            return CGRect(x: frame.minX, y: frame.minY, width: frame.width / 2, height: frame.height)
+        case .east:
+            return CGRect(x: frame.midX, y: frame.minY, width: frame.width / 2, height: frame.height)
+        case .north:
+            return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height / 2)
+        case .south:
+            return CGRect(x: frame.minX, y: frame.midY, width: frame.width, height: frame.height / 2)
+        }
+    }
 }
 
 /// A display frame is reported by yabai in the same global coordinate system as

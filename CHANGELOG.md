@@ -6,14 +6,22 @@ All notable changes to Yabai Menu are documented in this file.
 
 ### Added
 
-- Option-click BSP branch inspection with a transparent, click-through overlay.
-- Automatic Accessibility permission request, suppression of native macOS
-  Option-click behavior, and a persistent diagnostic listener status.
-- Repeated Option-clicks on the same tiled window advance from its closest
-  parent branch to the complete current BSP tree.
+- Control+Shift hover inspection of a tiled window's closest BSP parent branch
+  with a transparent, click-through overlay and no layout mutation.
+- Control+Option drag-and-warp for moving one ordinary tiled window to the
+  north, east, south, or west edge of another BSP leaf using yabai's native
+  `--insert` and `--warp` operations.
+- Visual source and drop-zone overlays during a warp, plus exact Undo when the
+  source window's original sibling was a single leaf.
+- Menu actions for balancing the focused BSP Space, testing the overlay, and
+  exporting a complete text diagnostic report to the Desktop.
+- Automatic Accessibility permission request and a persistent global-listener
+  status in the menu.
+- Structured JSON-lines logging of modifier/mouse input, BSP reconstruction,
+  coordinates, all yabai commands, pre/post snapshots, and verification.
 - Conservative reconstruction checks and synthetic self-tests for BSP split
   metadata, stacked leaves, invalid snapshots, and multi-display coordinate
-  conversion.
+  conversion, including a real yabai 7.1.25 regression snapshot.
 
 ## [1.0.1] - 2026-08-24
 
