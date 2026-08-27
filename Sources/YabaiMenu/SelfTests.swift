@@ -139,6 +139,61 @@ enum SelfTests {
         let stackedPath = try resolver.branches(for: 21, in: syntheticSnapshots(from: stackedTree))
         try requireBranchPath(stackedPath, equals: [[20, 21, 22]], label: "stacked leaf")
 
+        // Regression fixture captured from yabai 7.1.25. A Space query can
+        // include stale windows without an AX reference. Those records report
+        // `is-floating: false`, but they are not leaves in the current BSP
+        // tree and must not participate in reconstruction.
+        let yabaiSevenRealSpace = [
+            snapshot(
+                id: 2195,
+                frame: CGRect(x: 0, y: 31, width: 540, height: 1189),
+                axis: .vertical,
+                child: .first
+            ),
+            snapshot(
+                id: 4585,
+                frame: CGRect(x: 550, y: 31, width: 538, height: 1189),
+                axis: .vertical,
+                child: .second
+            ),
+            snapshot(
+                id: 3616,
+                frame: CGRect(x: 1100, y: 31, width: 1090, height: 1189),
+                axis: .vertical,
+                child: .second
+            ),
+            snapshot(
+                id: 3772,
+                frame: CGRect(x: 0, y: 779, width: 965, height: 481),
+                axis: .none,
+                child: .none,
+                isVisible: false,
+                hasAXReference: false
+            ),
+            snapshot(
+                id: 241,
+                frame: CGRect(x: 0, y: 31, width: 2189, height: 1189),
+                axis: .none,
+                child: .none,
+                isVisible: false,
+                hasAXReference: false
+            ),
+            snapshot(
+                id: 4287,
+                frame: CGRect(x: 1100, y: 31, width: 1090, height: 1189),
+                axis: .none,
+                child: .none,
+                isVisible: false,
+                hasAXReference: false
+            )
+        ]
+        let yabaiSevenPath = try resolver.branches(for: 2195, in: yabaiSevenRealSpace)
+        try requireBranchPath(
+            yabaiSevenPath,
+            equals: [[2195, 4585], [2195, 3616, 4585]],
+            label: "yabai 7.1.25 Space query with stale windows"
+        )
+
         var filteredWindows = exampleWindows
         filteredWindows.append(
             snapshot(
@@ -421,7 +476,9 @@ enum SelfTests {
         axis: BSPSplitAxis,
         child: BSPSplitChild,
         stackIndex: Int = 0,
-        isFloating: Bool = false
+        isFloating: Bool = false,
+        isVisible: Bool = true,
+        hasAXReference: Bool = true
     ) -> BSPWindowSnapshot {
         BSPWindowSnapshot(
             id: id,
@@ -431,6 +488,8 @@ enum SelfTests {
             splitType: axis,
             splitChild: child,
             stackIndex: stackIndex,
+            hasAXReference: hasAXReference,
+            isVisible: isVisible,
             isFloating: isFloating,
             isMinimized: false,
             isHidden: false
