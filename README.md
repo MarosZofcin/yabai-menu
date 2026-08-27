@@ -2,6 +2,13 @@
 
 Yabai Menu is a small, native macOS menu-bar controller for [yabai](https://github.com/asmvik/yabai). It is written in Swift and AppKit and does not require Hammerspoon, Electron, or another runtime.
 
+Version 1.0.2 also makes yabai's normally invisible BSP structure understandable
+on screen: it can show which tiled windows belong together, move a tiled window
+to a new position with the mouse, and rebalance the result without requiring the
+user to learn yabai commands.
+
+**[Download the latest Yabai Menu release](https://github.com/MarosZofcin/yabai-menu/releases/latest)**
+
 > [!IMPORTANT]
 > This first release is intentionally opinionated. It expects a Git repository at `~/dotfiles` and a yabai configuration at `~/dotfiles/yabai/yabairc`, normally linked from `~/.config/yabai/yabairc`. See **Current scope** before installing.
 
@@ -13,7 +20,8 @@ Dynamic tiling treats the desktop as a live layout. Opening, closing, moving, or
 
 This is interesting because it:
 
-- keeps every managed window visible and non-overlapping
+- automatically uses the available area for managed windows; application
+  minimum sizes can still force overlap in very crowded layouts
 - makes layouts predictable enough for keyboard-driven navigation
 - removes repetitive dragging and resizing
 - scales from a laptop screen to multi-display workspaces
@@ -99,6 +107,110 @@ That narrow workflow is the reason for Yabai Menu. It is not intended to replace
 - Control+Option drag-and-warp with visual directional drop zones
 - balance current BSP Space and exact Undo where the original sibling is one leaf
 - optional detailed diagnostics containing input, tree, coordinate, command, and pre/post state data
+
+## Visual BSP controls, explained from scratch
+
+### What is a BSP branch?
+
+With ordinary macOS window management, every window is an independent rectangle
+that can be placed anywhere. Yabai's BSP mode works differently. Imagine the
+desktop as a sheet of paper. Yabai first cuts it into two regions. Either region
+can then be cut in two again, and the process continues as more windows appear.
+
+Every cut creates a **branch**. A branch can contain two windows, or two larger
+groups of windows. This hidden structure matters because yabai does not merely
+remember where a window happens to be drawn; it remembers where that window
+belongs in the series of splits. When one window is added, removed, or moved,
+yabai recalculates the affected branch automatically.
+
+This is powerful, but the tree is normally invisible. Two windows may look as
+if they are simply next to each other while belonging to different branches.
+That makes it difficult to predict which windows will resize together or where
+a newly opened window should be moved. Yabai Menu 1.0.2 adds a visual layer over
+that hidden structure.
+
+| Tool | What you do | What appears | Does it change the layout? |
+|---|---|---|---|
+| Inspect branch | Hold **Control+Shift** and move the pointer over a tiled window | A cyan outline around its nearest parent branch | No |
+| Drag-and-warp | Hold **Control+Option** and drag one tiled window onto another | Blue source outline and green destination half | Yes, through yabai |
+| Balance | Choose **Balance Current Space** from the menu | Yabai redistributes space more evenly | It changes split ratios, not the tree order |
+| Undo | Choose **Undo Last Warp** after a supported move | The moved window returns to its recorded sibling | Yes |
+
+### 1. See which windows belong together
+
+1. Hold **Control+Shift**.
+2. Do not click. Simply move the mouse pointer over a tiled window.
+3. A cyan frame appears around the smallest BSP branch containing that window.
+4. Move the pointer to another tiled window to inspect its branch.
+5. Release either key and the frame disappears.
+
+The cyan overlay is only an explanation of the current layout. It is
+transparent, always above normal windows, does not accept clicks, does not move
+anything, and does not change keyboard focus. This is useful when you want to
+understand why a set of windows resizes together before making a change.
+
+### 2. Move a tiled window without learning `warp` commands
+
+Yabai already provides a powerful `warp` command, but normally the user must
+decide whether to warp north, east, south, or west and specify the target in a
+command. Yabai Menu turns that operation into visual drag and drop:
+
+1. Hold **Control+Option** before pressing the mouse button.
+2. Press and hold a tiled window. A blue frame marks it as the source.
+3. Drag the pointer over a *different* tiled window.
+4. Move toward the upper, right, lower, or left side of that target. A green
+   half-window preview shows exactly where the source will be inserted.
+5. Release the mouse button while the desired green destination is visible.
+
+The physical macOS window drag is suppressed. Instead, Yabai Menu sends native
+`--insert` and `--warp` operations to yabai. Yabai removes the source from its
+old branch, inserts it beside the chosen target, and recalculates the surrounding
+layout. The window therefore remains tiled; it is not temporarily converted to
+a floating window.
+
+For example, if a newly opened window appears in an inconvenient part of the
+layout, hold **Control+Option**, drag it over the window it should sit beside,
+and release over the required green edge. The user chooses the destination
+visually while Yabai Menu derives the corresponding direction and command.
+
+### 3. Clean up the result with Balance and Undo
+
+**Balance Current Space** asks yabai to redistribute the available area through
+the current BSP tree. It is useful after manual resizing or several moves. It
+does not change which windows are siblings; it only makes the split ratios more
+even.
+
+**Undo Last Warp** reverses the most recent drag-and-warp when the original
+single-window sibling can be addressed exactly by yabai. The menu disables Undo
+when the old destination was an entire multi-window branch, because guessing an
+approximate rollback could create a different tree.
+
+### Why the implementation is interesting
+
+Yabai does not return a ready-made tree diagram. Yabai Menu reconstructs the
+relevant hierarchy from yabai's current window state and `split-type` /
+`split-child` relationships. It also handles real layouts in which application
+minimum sizes make small tiled windows overlap or extend beyond their assigned
+region. If the available information could describe more than one equally
+plausible tree, the app deliberately shows nothing instead of highlighting or
+moving the wrong branch.
+
+The overlays work across displays and Spaces, stay click-through, and use
+yabai's own operations for every layout mutation. Yabai remains the only tiling
+engine and the source of truth.
+
+### Permissions and troubleshooting
+
+The visual controls need both **Accessibility** and **Input Monitoring** in
+System Settings. Yabai Menu requests them, shows the state of each permission
+in its menu, and provides links to the correct settings pages. Once both are
+allowed, the global mouse listener starts automatically.
+
+Detailed interaction logging is off by default. If a problem needs diagnosing,
+enable **Detailed Diagnostic Logging**, reproduce it once, then choose **Export
+Diagnostics to Desktop**. The resulting text report is designed to provide the
+input, BSP, coordinate, yabai-command, and before/after information needed to
+diagnose the behavior without a screen recording.
 
 ## Detailed behavior
 
