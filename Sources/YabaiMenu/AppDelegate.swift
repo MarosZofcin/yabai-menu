@@ -129,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(disabledItem("Current app: \(currentApp?.name ?? "Unavailable")"))
         menu.addItem(disabledItem(Self.shortened(branchHighlightStatus)))
+        menu.addItem(actionItem("Test BSP Highlight in 3 Seconds", #selector(testBSPHighlight)))
         if let currentApp {
             let isFloating = store.contains(floatingApps, application: currentApp)
             let title = isFloating ? "Remove \(currentApp.name) from Floating Apps" : "Float \(currentApp.name)"
@@ -185,8 +186,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        menu.addItem(disabledItem(Self.versionTitle))
         menu.addItem(actionItem("Quit Yabai Menu", #selector(quitApp), key: "q"))
         statusItem.menu = menu
+    }
+
+    @objc private func testBSPHighlight() {
+        branchHighlight.runDiagnostic()
     }
 
     private func disabledItem(_ title: String) -> NSMenuItem {
@@ -429,4 +435,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         formatter.timeStyle = .short
         return formatter
     }()
+
+    private static var versionTitle: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = info?["CFBundleVersion"] as? String ?? "Unknown"
+        return "Yabai Menu \(version) (build \(build))"
+    }
 }
