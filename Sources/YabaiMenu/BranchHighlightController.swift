@@ -7,7 +7,9 @@ final class BranchHighlightController {
     private let statusHandler: (String) -> Void
     private let queryQueue = DispatchQueue(label: "sk.maroszofcin.YabaiMenu.bsp-query", qos: .userInitiated)
 
-    private var mouseMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var eventTapSource: CFRunLoopSource?
+    private var eventTapUserInfo: UnsafeMutableRawPointer?
     private var releaseTimer: Timer?
     private var notificationObservers: [NSObjectProtocol] = []
     private var overlayWindow: BranchOverlayPanel?
@@ -21,10 +23,40 @@ final class BranchHighlightController {
     }
 
     func start() {
-        guard mouseMonitor == nil else { return }
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            Task { @MainActor in self?.handleMouseDown(event) }
+        guard eventTap == nil else { return }
+
+        guard CGPreflightListenEventAccess() else {
+            _ = CGRequestListenEventAccess()
+            statusHandler("BSP highlight: Allow Input Monitoring, then relaunch Yabai Menu")
+            return
         }
+
+        let eventMask = CGEventMask(1) << CGEventType.leftMouseDown.rawValue
+        let userInfo = Unmanaged.passRetained(self).toOpaque()
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .listenOnly,
+            eventsOfInterest: eventMask,
+            callback: branchHighlightEventTapCallback,
+            userInfo: userInfo
+        ) else {
+            Unmanaged<BranchHighlightController>.fromOpaque(userInfo).release()
+            statusHandler("BSP highlight: Input Monitoring listener could not start; relaunch the app")
+            return
+        }
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CFMachPortInvalidate(tap)
+            Unmanaged<BranchHighlightController>.fromOpaque(userInfo).release()
+            statusHandler("BSP highlight: Input Monitoring listener could not start")
+            return
+        }
+        eventTap = tap
+        eventTapSource = source
+        eventTapUserInfo = userInfo
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        statusHandler("BSP highlight: Ready — Option-click a tiled window")
 
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         notificationObservers.append(
@@ -48,9 +80,18 @@ final class BranchHighlightController {
     }
 
     func stop() {
-        if let mouseMonitor {
-            NSEvent.removeMonitor(mouseMonitor)
-            self.mouseMonitor = nil
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+            CFMachPortInvalidate(eventTap)
+            self.eventTap = nil
+        }
+        if let eventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), eventTapSource, .commonModes)
+            self.eventTapSource = nil
+        }
+        if let eventTapUserInfo {
+            Unmanaged<BranchHighlightController>.fromOpaque(eventTapUserInfo).release()
+            self.eventTapUserInfo = nil
         }
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         for observer in notificationObservers {
@@ -61,18 +102,16 @@ final class BranchHighlightController {
         resetAndHide()
     }
 
-    private func handleMouseDown(_ event: NSEvent) {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags.contains(.option),
-              !flags.contains(.control),
-              !flags.contains(.command),
-              !flags.contains(.shift) else {
+    fileprivate func handleMouseDown(flags: CGEventFlags) {
+        let relevantFlags = flags.intersection([.maskAlternate, .maskControl, .maskCommand, .maskShift])
+        guard relevantFlags == .maskAlternate else {
             // A different modifier chord must never leave a stale branch
             // visible while the user performs an unrelated click.
             resetAndHide()
             return
         }
 
+        statusHandler("BSP highlight: Option-click detected; reading yabai…")
         let yabai = self.yabai
         queryQueue.async { [weak self] in
             let result = Result { try yabai.bspBranchesAtMouse() }
@@ -106,12 +145,12 @@ final class BranchHighlightController {
                 return
             }
             showOverlay(frame: frame, level: branchLevel)
-            statusHandler("BSP branch \(branchLevel + 1) of \(selection.branches.count)")
+            statusHandler("BSP highlight: Branch \(branchLevel + 1) of \(selection.branches.count)")
             startReleaseTimer()
 
         case .failure(let error):
             resetAndHide()
-            statusHandler(error.localizedDescription)
+            statusHandler("BSP highlight: \(error.localizedDescription)")
         }
     }
 
@@ -164,6 +203,11 @@ final class BranchHighlightController {
         branchLevel = 0
     }
 
+    fileprivate func reenableEventTap() {
+        guard let eventTap else { return }
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+    }
+
     private static func optionIsPressed() -> Bool {
         CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate)
     }
@@ -176,6 +220,19 @@ final class BranchHighlightController {
         .systemPurple,
         .systemYellow
     ]
+}
+
+private let branchHighlightEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+    guard let userInfo else { return Unmanaged.passUnretained(event) }
+    let controller = Unmanaged<BranchHighlightController>.fromOpaque(userInfo).takeUnretainedValue()
+
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        Task { @MainActor in controller.reenableEventTap() }
+    } else if type == .leftMouseDown {
+        let flags = event.flags
+        Task { @MainActor in controller.handleMouseDown(flags: flags) }
+    }
+    return Unmanaged.passUnretained(event)
 }
 
 private final class BranchOverlayPanel: NSPanel {
