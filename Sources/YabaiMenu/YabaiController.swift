@@ -136,7 +136,11 @@ struct YabaiController: Sendable {
               let target = try? decoder.decode(BSPWindowSnapshot.self, from: targetData) else {
             throw AppError.message("Could not decode yabai's window information.")
         }
-        guard !target.isFloating, !target.isMinimized, !target.isHidden else {
+        guard target.hasAXReference,
+              target.isVisible,
+              !target.isFloating,
+              !target.isMinimized,
+              !target.isHidden else {
             throw BSPTreeError.targetNotTiled
         }
 
