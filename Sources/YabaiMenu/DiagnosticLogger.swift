@@ -6,10 +6,15 @@ import CoreGraphics
 /// UTC timestamp, app version, and event-specific fields.
 final class DiagnosticLogger: @unchecked Sendable {
     static let shared = DiagnosticLogger()
+    private static let enabledDefaultsKey = "diagnosticLoggingEnabled"
 
     private let queue = DispatchQueue(label: "sk.maroszofcin.YabaiMenu.diagnostics")
     private let logURL: URL
     private let encoderDateFormatter = ISO8601DateFormatter()
+
+    var isEnabled: Bool {
+        UserDefaults.standard.bool(forKey: Self.enabledDefaultsKey)
+    }
 
     private init() {
         let directory = FileManager.default.homeDirectoryForCurrentUser
@@ -20,6 +25,7 @@ final class DiagnosticLogger: @unchecked Sendable {
     }
 
     func log(_ event: String, _ details: [String: Any] = [:]) {
+        guard isEnabled else { return }
         let timestamp = encoderDateFormatter.string(from: Date())
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
@@ -49,6 +55,17 @@ final class DiagnosticLogger: @unchecked Sendable {
             } catch {
                 // Logging must never affect window management.
             }
+        }
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        guard enabled != isEnabled else { return }
+        if enabled {
+            UserDefaults.standard.set(true, forKey: Self.enabledDefaultsKey)
+            log("diagnostic_logging_enabled")
+        } else {
+            log("diagnostic_logging_disabled")
+            UserDefaults.standard.set(false, forKey: Self.enabledDefaultsKey)
         }
     }
 

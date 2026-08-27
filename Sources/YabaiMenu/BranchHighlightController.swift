@@ -55,8 +55,12 @@ final class BranchHighlightController {
     private var lastUndoRecord: BSPWarpUndoRecord?
 
     private var status = "BSP tools: Starting…"
+    private var isStarted = false
 
     var canUndo: Bool { lastUndoRecord != nil }
+    var hasAccessibilityPermission: Bool { AXIsProcessTrusted() }
+    var hasInputMonitoringPermission: Bool { CGPreflightListenEventAccess() }
+    var isListening: Bool { eventTap != nil }
 
     init(
         yabai: YabaiController,
@@ -69,14 +73,37 @@ final class BranchHighlightController {
     }
 
     func start() {
-        guard eventTap == nil else { return }
+        guard !isStarted else { return }
+        isStarted = true
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        let trusted = AXIsProcessTrustedWithOptions(options)
-        diagnostics.log("accessibility_checked", ["trusted": trusted])
-        guard trusted else {
-            updateStatus("BSP tools: Accessibility permission required")
+        let accessibility = AXIsProcessTrustedWithOptions(options)
+        let inputMonitoring = CGPreflightListenEventAccess() || CGRequestListenEventAccess()
+        diagnostics.log("input_permissions_checked", [
+            "accessibility": accessibility,
+            "input_monitoring": inputMonitoring,
+            "prompted": true
+        ])
+        refreshPermissions()
+    }
+
+    func refreshPermissions() {
+        guard isStarted else { return }
+        let accessibility = AXIsProcessTrusted()
+        let inputMonitoring = CGPreflightListenEventAccess()
+        guard accessibility && inputMonitoring else {
+            tearDownEventTap(reason: "permission_missing")
+            let missing: String
+            if !accessibility && !inputMonitoring {
+                missing = "Accessibility and Input Monitoring permissions required"
+            } else if !accessibility {
+                missing = "Accessibility permission required"
+            } else {
+                missing = "Input Monitoring permission required"
+            }
+            updateStatus("BSP tools: \(missing)")
             return
         }
+        guard eventTap == nil else { return }
 
         let mask = [
             CGEventType.mouseMoved,
@@ -113,7 +140,13 @@ final class BranchHighlightController {
     }
 
     func stop() {
-        cancelInteractions(reason: "application_stopping")
+        isStarted = false
+        tearDownEventTap(reason: "application_stopping")
+    }
+
+    private func tearDownEventTap(reason: String) {
+        guard eventTap != nil || eventTapSource != nil else { return }
+        cancelInteractions(reason: reason)
         if let source = eventTapSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
@@ -122,7 +155,7 @@ final class BranchHighlightController {
         }
         eventTapSource = nil
         eventTap = nil
-        diagnostics.log("event_tap_stopped")
+        diagnostics.log("event_tap_stopped", ["reason": reason])
     }
 
     func runDiagnostic() {
@@ -635,13 +668,18 @@ private final class BranchOverlayPanel {
     }
 
     func show(yabaiFrame: CGRect, display: BSPDisplaySnapshot) {
+        let clippedFrame = yabaiFrame.intersection(display.frame.rect)
+        guard !clippedFrame.isNull, !clippedFrame.isEmpty else {
+            hide()
+            return
+        }
         guard let screen = NSScreen.screens.first(where: { screen in
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
                 return false
             }
             return number.uint32Value == display.id
         }), let frame = BSPCoordinateConverter.appKitRect(
-            fromYabai: yabaiFrame,
+            fromYabai: clippedFrame,
             yabaiDisplayFrame: display.frame.rect,
             appKitScreenFrame: screen.frame
         ), frame.width > 0, frame.height > 0 else {

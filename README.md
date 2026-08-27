@@ -98,7 +98,7 @@ That narrow workflow is the reason for Yabai Menu. It is not intended to replace
 - Control+Shift hover inspection of the nearest BSP parent branch
 - Control+Option drag-and-warp with visual directional drop zones
 - balance current BSP Space and exact Undo where the original sibling is one leaf
-- exportable text diagnostics containing input, tree, coordinate, command, and pre/post state data
+- optional detailed diagnostics containing input, tree, coordinate, command, and pre/post state data
 
 ## Detailed behavior
 
@@ -153,15 +153,24 @@ window-targeted `warp`, so the app reports that exact Undo is unavailable.
 
 The overlays never accept mouse events or focus. They use yabai's split-child
 metadata and current frames and fail closed if those values do not describe one
-unambiguous hierarchy. On first launch, Yabai Menu requests **Accessibility**
-permission for the global listener. Grant it in **System Settings → Privacy &
-Security → Accessibility**, then relaunch Yabai Menu.
+unambiguous hierarchy. Reconstruction also accounts for valid sibling overlap
+caused by applications whose minimum window size is larger than yabai's assigned
+region; overlay frames are clipped to the owning display.
 
-If an interaction does not behave as expected, choose **Export Diagnostics to
-Desktop**. The text report includes the app/macOS/yabai versions, display and
-Space snapshots, relevant yabai mouse configuration, pointer and overlay
-coordinates, modifier and drag decisions, the reconstructed branch paths,
-every yabai command with output and timing, and pre/post mutation state. The
+On first launch, Yabai Menu requests both **Accessibility** and **Input
+Monitoring** for the global mouse listener. Their current state and direct links
+to both System Settings panes remain visible in the menu. The app checks the
+permissions again in the background and starts the listener automatically once
+both are granted.
+
+If an interaction does not behave as expected, enable **Detailed Diagnostic
+Logging**, reproduce the problem, and choose **Export Diagnostics to Desktop**.
+Detailed logging is off by default because it records window metadata and every
+relevant input/query decision. The exported text report always includes the
+current app/macOS/yabai, permission, display, Space, mouse-configuration, and
+listener state; when logging was enabled it also includes pointer and overlay
+coordinates, modifier and drag decisions, reconstructed branch paths, every
+yabai command with output and timing, and pre/post mutation state. The
 underlying JSON-lines log is kept at
 `~/Library/Logs/Yabai Menu/interaction.jsonl`; it rotates at 16 MB and the
 export includes both the current and previous segment.
@@ -221,6 +230,7 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 - macOS 13 or later
 - yabai installed at `/opt/homebrew/bin/yabai` or `/usr/local/bin/yabai`
 - Accessibility permission for yabai and Yabai Menu
+- Input Monitoring permission for Yabai Menu's BSP mouse controls
 - Git-backed yabai config at `~/dotfiles/yabai/yabairc`
 - an upstream branch configured for `~/dotfiles`
 
@@ -229,8 +239,9 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 1. Download the versioned `Yabai-Menu-<version>.zip` asset from Releases. Do not download GitHub's automatic “Source code” archives.
 2. Unzip and move `Yabai Menu.app` to `/Applications`.
 3. Open the app. It appears only in the menu bar.
-4. Accept the Accessibility request, enable **Yabai Menu** in System Settings,
-   and relaunch the app.
+4. Accept the Accessibility and Input Monitoring requests and enable **Yabai
+   Menu** in both System Settings panes. The menu shows when each permission is
+   active.
 5. Enable **Launch Yabai Menu at Login** if you want background synchronization after login and wake.
 
 The downloadable app is ad-hoc signed for local use. A paid Apple Developer certificate is not required. If macOS blocks the first launch, Control-click the app and choose **Open**.

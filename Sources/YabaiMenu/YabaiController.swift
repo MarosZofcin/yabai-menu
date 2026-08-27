@@ -375,6 +375,7 @@ struct YabaiController: Sendable {
         sections.append("architecture: \(Self.architecture)")
         sections.append("app: \(Bundle.main.bundleIdentifier ?? "unknown") \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"))")
         sections.append("accessibility trusted: \(AXIsProcessTrusted())")
+        sections.append("input monitoring trusted: \(CGPreflightListenEventAccess())")
         sections.append(uiSnapshot)
         sections.append("yabai path: \(executableURL?.path ?? "not found")")
         let commands: [(String, [String])] = [

@@ -121,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshStatus() {
         snapshot = yabai.snapshot()
+        branchHighlight.refreshPermissions()
         statusItem.button?.contentTintColor = nil
         statusItem.button?.toolTip = snapshot.isRunning ? "yabai is running" : "yabai is stopped"
     }
@@ -138,6 +139,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(disabledItem("Current app: \(currentApp?.name ?? "Unavailable")"))
         menu.addItem(disabledItem(Self.shortened(branchHighlightStatus)))
+        menu.addItem(disabledItem("Accessibility: \(branchHighlight.hasAccessibilityPermission ? "Allowed" : "Required")"))
+        menu.addItem(disabledItem("Input Monitoring: \(branchHighlight.hasInputMonitoringPermission ? "Allowed" : "Required")"))
+        if !branchHighlight.hasAccessibilityPermission {
+            menu.addItem(actionItem("Open Accessibility Settings", #selector(openAccessibilitySettings)))
+        }
+        if !branchHighlight.hasInputMonitoringPermission {
+            menu.addItem(actionItem("Open Input Monitoring Settings", #selector(openInputMonitoringSettings)))
+        }
         menu.addItem(disabledItem("Inspect branch: Control + Shift + hover"))
         menu.addItem(disabledItem("Move window: Control + Option + drag"))
         menu.addItem(actionItem("Test BSP Highlight in 3 Seconds", #selector(testBSPHighlight)))
@@ -193,6 +202,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(actionItem("Edit yabairc", #selector(editYabairc)))
         menu.addItem(actionItem("Open dotfiles Folder", #selector(openRepository)))
+        let loggingItem = actionItem("Detailed Diagnostic Logging", #selector(toggleDiagnosticLogging))
+        loggingItem.state = diagnostics.isEnabled ? .on : .off
+        menu.addItem(loggingItem)
         menu.addItem(actionItem("Export Diagnostics to Desktop", #selector(exportDiagnostics)))
 
         if #available(macOS 13.0, *) {
@@ -223,6 +235,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         operationStatus = "Collecting diagnostics…"
         rebuildMenu()
         let uiSnapshot = Self.uiDiagnosticSnapshot()
+            + "\ndiagnostic logging enabled: \(diagnostics.isEnabled)"
+            + "\nBSP listener active: \(branchHighlight.isListening)"
         let yabai = yabai
         let diagnostics = diagnostics
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -246,6 +260,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
+    }
+
+    @objc private func toggleDiagnosticLogging() {
+        diagnostics.setEnabled(!diagnostics.isEnabled)
+        operationStatus = diagnostics.isEnabled
+            ? "Detailed diagnostic logging enabled"
+            : "Detailed diagnostic logging disabled"
+        rebuildMenu()
+    }
+
+    @objc private func openAccessibilitySettings() {
+        openPrivacySettings(anchor: "Privacy_Accessibility")
+    }
+
+    @objc private func openInputMonitoringSettings() {
+        openPrivacySettings(anchor: "Privacy_ListenEvent")
+    }
+
+    private func openPrivacySettings(anchor: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func disabledItem(_ title: String) -> NSMenuItem {

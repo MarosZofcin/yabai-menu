@@ -2,7 +2,7 @@
 
 All notable changes to Yabai Menu are documented in this file.
 
-## [Unreleased]
+## [1.0.2] - 2026-08-27
 
 ### Added
 
@@ -15,13 +15,22 @@ All notable changes to Yabai Menu are documented in this file.
   source window's original sibling was a single leaf.
 - Menu actions for balancing the focused BSP Space, testing the overlay, and
   exporting a complete text diagnostic report to the Desktop.
-- Automatic Accessibility permission request and a persistent global-listener
-  status in the menu.
-- Structured JSON-lines logging of modifier/mouse input, BSP reconstruction,
-  coordinates, all yabai commands, pre/post snapshots, and verification.
+- Automatic Accessibility and Input Monitoring requests, live permission state,
+  and direct System Settings links in the menu.
+- Optional structured JSON-lines logging of modifier/mouse input, BSP
+  reconstruction, coordinates, all yabai commands, pre/post snapshots, and
+  verification. Detailed logging is off by default and can be toggled in the
+  menu; current-state exports remain available while it is off.
 - Conservative reconstruction checks and synthetic self-tests for BSP split
   metadata, stacked leaves, invalid snapshots, and multi-display coordinate
   conversion, including a real yabai 7.1.25 regression snapshot.
+
+### Fixed
+
+- Reconstruct valid BSP trees when application minimum sizes make sibling
+  window frames overlap or overflow their assigned display region.
+- Clip overlay geometry to its display when a minimum-sized window extends
+  beyond the usable BSP region.
 
 ## [1.0.1] - 2026-08-24
 
@@ -47,5 +56,6 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
+[1.0.2]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.0.0

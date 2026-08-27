@@ -195,6 +195,96 @@ enum SelfTests {
             label: "yabai 7.1.25 Space query with stale windows"
         )
 
+        // Real post-warp snapshots from the 1.0.2 field diagnostics. The
+        // window applications enforce minimum sizes, so yabai's valid BSP
+        // siblings overlap even though their split metadata and origins still
+        // describe an unambiguous tree.
+        let verticallyOverlappingSiblings = [
+            snapshot(
+                id: 5064,
+                frame: CGRect(x: 0, y: 31, width: 1090, height: 589),
+                space: 2,
+                axis: .horizontal,
+                child: .first
+            ),
+            snapshot(
+                id: 6592,
+                frame: CGRect(x: 0, y: 631, width: 1090, height: 375),
+                space: 2,
+                axis: .horizontal,
+                child: .first
+            ),
+            snapshot(
+                id: 6681,
+                frame: CGRect(x: 0, y: 931, width: 1090, height: 289),
+                space: 2,
+                axis: .horizontal,
+                child: .second
+            ),
+            snapshot(
+                id: 6674,
+                frame: CGRect(x: 1100, y: 31, width: 1090, height: 1189),
+                space: 2,
+                axis: .vertical,
+                child: .second
+            )
+        ]
+        let verticallyOverlappingPath = try resolver.branches(for: 6681, in: verticallyOverlappingSiblings)
+        try requireBranchPath(
+            verticallyOverlappingPath,
+            equals: [[6592, 6681], [5064, 6592, 6681], [5064, 6592, 6674, 6681]],
+            label: "minimum-height sibling overlap after north warp"
+        )
+
+        let overflowingNestedBranch = [
+            snapshot(
+                id: 2195,
+                frame: CGRect(x: 0, y: 31, width: 726, height: 600),
+                axis: .horizontal,
+                child: .first
+            ),
+            snapshot(
+                id: 6931,
+                frame: CGRect(x: 0, y: 631, width: 726, height: 589),
+                axis: .horizontal,
+                child: .second
+            ),
+            snapshot(
+                id: 6947,
+                frame: CGRect(x: 737, y: 31, width: 721, height: 786),
+                axis: .vertical,
+                child: .first
+            ),
+            snapshot(
+                id: 6953,
+                frame: CGRect(x: 1469, y: 31, width: 720, height: 786),
+                axis: .vertical,
+                child: .second
+            ),
+            snapshot(
+                id: 6915,
+                frame: CGRect(x: 737, y: 827, width: 1452, height: 375),
+                axis: .horizontal,
+                child: .first
+            ),
+            snapshot(
+                id: 6940,
+                frame: CGRect(x: 737, y: 1028, width: 1452, height: 375),
+                axis: .horizontal,
+                child: .second
+            )
+        ]
+        let overflowingPath = try resolver.branches(for: 6915, in: overflowingNestedBranch)
+        try requireBranchPath(
+            overflowingPath,
+            equals: [
+                [6915, 6940],
+                [6915, 6940, 6947, 6953],
+                [2195, 6915, 6931, 6940, 6947, 6953]
+            ],
+            label: "minimum-height nested branch overflow after south warp"
+        )
+
         var filteredWindows = exampleWindows
         filteredWindows.append(
             snapshot(

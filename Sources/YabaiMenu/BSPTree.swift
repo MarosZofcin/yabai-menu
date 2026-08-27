@@ -390,18 +390,23 @@ private struct CandidateBuilder {
             let second = Array(sorted[splitIndex...])
             let firstFrame = boundingFrame(first)
             let secondFrame = boundingFrame(second)
-            let separated: Bool
+            let ordered: Bool
             let matchingSpan: Bool
             if axis == .vertical {
-                separated = firstFrame.maxX <= secondFrame.minX + tolerance
+                // A window's minimum width can be larger than the region
+                // assigned by yabai. In that case sibling frames overlap,
+                // but their origins and one perpendicular edge still retain
+                // the BSP order. Requiring a physical gap would reject that
+                // otherwise valid tree.
+                ordered = firstFrame.minX < secondFrame.minX - tolerance
                 matchingSpan = abs(firstFrame.minY - secondFrame.minY) <= tolerance
-                    && abs(firstFrame.maxY - secondFrame.maxY) <= tolerance
+                    || abs(firstFrame.maxY - secondFrame.maxY) <= tolerance
             } else {
-                separated = firstFrame.maxY <= secondFrame.minY + tolerance
+                ordered = firstFrame.minY < secondFrame.minY - tolerance
                 matchingSpan = abs(firstFrame.minX - secondFrame.minX) <= tolerance
-                    && abs(firstFrame.maxX - secondFrame.maxX) <= tolerance
+                    || abs(firstFrame.maxX - secondFrame.maxX) <= tolerance
             }
-            if separated && matchingSpan {
+            if ordered && matchingSpan {
                 result.append((first, second))
             }
         }
