@@ -137,10 +137,11 @@ level upward; the final level is the complete BSP tree for that Space.
 The inspection overlay neither changes the layout nor accepts mouse events. It
 uses yabai's per-window split metadata together with the current frames. If
 those values do not describe one unambiguous hierarchy, Yabai Menu hides the
-overlay instead of guessing. On first launch, Yabai Menu requests **Input
-Monitoring** permission for its read-only global Option-click listener. Grant
-it in **System Settings → Privacy & Security → Input Monitoring**, then relaunch
-Yabai Menu.
+overlay instead of guessing. Yabai Menu consumes the trigger click so native
+macOS Option-click behavior cannot hide an application, change focus, or cause
+yabai to reflow the Space. On first launch, Yabai Menu requests
+**Accessibility** permission for this global gesture. Grant it in **System
+Settings → Privacy & Security → Accessibility**, then relaunch Yabai Menu.
 
 ### Synchronization states
 
@@ -196,8 +197,7 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 - Apple Silicon Mac
 - macOS 13 or later
 - yabai installed at `/opt/homebrew/bin/yabai` or `/usr/local/bin/yabai`
-- Accessibility permission for yabai
-- Input Monitoring permission for Yabai Menu (needed for global Option-click inspection)
+- Accessibility permission for yabai and Yabai Menu
 - Git-backed yabai config at `~/dotfiles/yabai/yabairc`
 - an upstream branch configured for `~/dotfiles`
 
