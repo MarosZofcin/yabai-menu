@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import ServiceManagement
 
 @MainActor
@@ -7,7 +8,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var yabaircURL = repositoryURL.appendingPathComponent("yabai/yabairc")
     private lazy var store = YabaircBlacklistStore(fileURL: yabaircURL)
     private lazy var gitSync = GitSyncController(repositoryURL: repositoryURL, managedFileURL: yabaircURL)
-    private let yabai = YabaiController()
+    private let diagnostics = DiagnosticLogger.shared
+    private lazy var yabai = YabaiController(diagnostics: diagnostics)
+    private lazy var branchHighlight = BranchHighlightController(
+        yabai: yabai,
+        diagnostics: diagnostics
+    ) { [weak self] message in
+        guard let self else { return }
+        self.branchHighlightStatus = message
+        self.rebuildMenu()
+    }
 
     private var statusItem: NSStatusItem!
     private var statusTimer: Timer?
@@ -15,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var snapshot = YabaiSnapshot(isRunning: false, displays: [])
     private var floatingApps: [FloatingApp] = []
     private var currentApp: RunningApplication?
+    private var branchHighlightStatus = "BSP highlight: Starting…"
     private var operationStatus: String?
     private var operationInProgress = false
     private var gitHubState = GitHubSyncState.unknown
@@ -24,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        diagnostics.log("application_started", [
+            "macos": ProcessInfo.processInfo.operatingSystemVersionString,
+            "version": Self.versionTitle
+        ])
         lastSuccessfulSync = UserDefaults.standard.object(forKey: "lastSuccessfulGitHubSync") as? Date
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -52,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         captureCurrentApplication(NSWorkspace.shared.frontmostApplication)
         refreshStatus()
         rebuildMenu()
+        branchHighlight.start()
 
         statusTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshStatus() }
@@ -68,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         statusTimer?.invalidate()
         hourlySyncTimer?.invalidate()
+        branchHighlight.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -104,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshStatus() {
         snapshot = yabai.snapshot()
+        branchHighlight.refreshPermissions()
         statusItem.button?.contentTintColor = nil
         statusItem.button?.toolTip = snapshot.isRunning ? "yabai is running" : "yabai is stopped"
     }
@@ -120,6 +138,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(disabledItem("Current app: \(currentApp?.name ?? "Unavailable")"))
+        menu.addItem(disabledItem(Self.shortened(branchHighlightStatus)))
+        menu.addItem(disabledItem("Accessibility: \(branchHighlight.hasAccessibilityPermission ? "Allowed" : "Required")"))
+        menu.addItem(disabledItem("Input Monitoring: \(branchHighlight.hasInputMonitoringPermission ? "Allowed" : "Required")"))
+        if !branchHighlight.hasAccessibilityPermission {
+            menu.addItem(actionItem("Open Accessibility Settings", #selector(openAccessibilitySettings)))
+        }
+        if !branchHighlight.hasInputMonitoringPermission {
+            menu.addItem(actionItem("Open Input Monitoring Settings", #selector(openInputMonitoringSettings)))
+        }
+        menu.addItem(disabledItem("Inspect branch: Control + Shift + hover"))
+        menu.addItem(disabledItem("Move window: Control + Option + drag"))
+        menu.addItem(actionItem("Test BSP Highlight in 3 Seconds", #selector(testBSPHighlight)))
+        menu.addItem(actionItem("Balance Current Space", #selector(balanceCurrentSpace)))
+        let undoItem = actionItem("Undo Last Warp", #selector(undoLastWarp))
+        undoItem.isEnabled = !operationInProgress && branchHighlight.canUndo
+        menu.addItem(undoItem)
         if let currentApp {
             let isFloating = store.contains(floatingApps, application: currentApp)
             let title = isFloating ? "Remove \(currentApp.name) from Floating Apps" : "Float \(currentApp.name)"
@@ -168,6 +202,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(actionItem("Edit yabairc", #selector(editYabairc)))
         menu.addItem(actionItem("Open dotfiles Folder", #selector(openRepository)))
+        let loggingItem = actionItem("Detailed Diagnostic Logging", #selector(toggleDiagnosticLogging))
+        loggingItem.state = diagnostics.isEnabled ? .on : .off
+        menu.addItem(loggingItem)
+        menu.addItem(actionItem("Export Diagnostics to Desktop", #selector(exportDiagnostics)))
 
         if #available(macOS 13.0, *) {
             let loginItem = actionItem("Launch Yabai Menu at Login", #selector(toggleLaunchAtLogin))
@@ -176,8 +214,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        menu.addItem(disabledItem(Self.versionTitle))
         menu.addItem(actionItem("Quit Yabai Menu", #selector(quitApp), key: "q"))
         statusItem.menu = menu
+    }
+
+    @objc private func testBSPHighlight() {
+        branchHighlight.runDiagnostic()
+    }
+
+    @objc private func balanceCurrentSpace() {
+        branchHighlight.balanceCurrentSpace()
+    }
+
+    @objc private func undoLastWarp() {
+        branchHighlight.undoLastWarp()
+    }
+
+    @objc private func exportDiagnostics() {
+        operationStatus = "Collecting diagnostics…"
+        rebuildMenu()
+        let uiSnapshot = Self.uiDiagnosticSnapshot()
+            + "\ndiagnostic logging enabled: \(diagnostics.isEnabled)"
+            + "\nBSP listener active: \(branchHighlight.isListening)"
+        let yabai = yabai
+        let diagnostics = diagnostics
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            do {
+                let snapshot = yabai.diagnosticSnapshot(uiSnapshot: uiSnapshot)
+                let url = try diagnostics.exportReport(systemSnapshot: snapshot)
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.operationStatus = "Diagnostics saved: \(url.lastPathComponent)"
+                    self.diagnostics.log("diagnostic_report_revealed", ["path": url.path])
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    self.rebuildMenu()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.operationStatus = "Diagnostics failed: \(error.localizedDescription)"
+                    self.diagnostics.log("diagnostic_report_failed", ["error": error.localizedDescription])
+                    NSSound.beep()
+                    self.rebuildMenu()
+                }
+            }
+        }
+    }
+
+    @objc private func toggleDiagnosticLogging() {
+        diagnostics.setEnabled(!diagnostics.isEnabled)
+        operationStatus = diagnostics.isEnabled
+            ? "Detailed diagnostic logging enabled"
+            : "Detailed diagnostic logging disabled"
+        rebuildMenu()
+    }
+
+    @objc private func openAccessibilitySettings() {
+        openPrivacySettings(anchor: "Privacy_Accessibility")
+    }
+
+    @objc private func openInputMonitoringSettings() {
+        openPrivacySettings(anchor: "Privacy_ListenEvent")
+    }
+
+    private func openPrivacySettings(anchor: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func disabledItem(_ title: String) -> NSMenuItem {
@@ -420,4 +523,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         formatter.timeStyle = .short
         return formatter
     }()
+
+    private static var versionTitle: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = info?["CFBundleVersion"] as? String ?? "Unknown"
+        return "Yabai Menu \(version) (build \(build))"
+    }
+
+    private static func uiDiagnosticSnapshot() -> String {
+        let screens = NSScreen.screens.map { screen -> [String: Any] in
+            let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            return [
+                "display_id": number?.uint32Value as Any,
+                "frame": NSStringFromRect(screen.frame),
+                "visible_frame": NSStringFromRect(screen.visibleFrame),
+                "backing_scale_factor": screen.backingScaleFactor
+            ]
+        }
+        let quartzPointer = CGEvent(source: nil)?.location ?? .zero
+        return "pointer (AppKit bottom-left): \(NSEvent.mouseLocation)\npointer (Quartz top-left): \(quartzPointer)\nscreens: \(screens)"
+    }
 }
