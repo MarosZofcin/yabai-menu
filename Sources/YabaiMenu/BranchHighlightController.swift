@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 
 @MainActor
@@ -30,30 +31,31 @@ final class BranchHighlightController {
     func start() {
         guard eventTap == nil else { return }
 
-        guard CGPreflightListenEventAccess() else {
-            _ = CGRequestListenEventAccess()
-            statusHandler("BSP highlight: Allow Input Monitoring, then relaunch Yabai Menu")
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        guard AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary) else {
+            statusHandler("BSP highlight: Allow Accessibility, then relaunch Yabai Menu")
             return
         }
 
-        let eventMask = CGEventMask(1) << CGEventType.leftMouseDown.rawValue
+        let eventMask = (CGEventMask(1) << CGEventType.leftMouseDown.rawValue)
+            | (CGEventMask(1) << CGEventType.leftMouseUp.rawValue)
         let userInfo = Unmanaged.passRetained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,
+            options: .defaultTap,
             eventsOfInterest: eventMask,
             callback: branchHighlightEventTapCallback,
             userInfo: userInfo
         ) else {
             Unmanaged<BranchHighlightController>.fromOpaque(userInfo).release()
-            statusHandler("BSP highlight: Input Monitoring listener could not start; relaunch the app")
+            statusHandler("BSP highlight: Accessibility listener could not start; relaunch the app")
             return
         }
         guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
             CFMachPortInvalidate(tap)
             Unmanaged<BranchHighlightController>.fromOpaque(userInfo).release()
-            statusHandler("BSP highlight: Input Monitoring listener could not start")
+            statusHandler("BSP highlight: Accessibility listener could not start")
             return
         }
         eventTap = tap
@@ -271,9 +273,24 @@ private let branchHighlightEventTapCallback: CGEventTapCallBack = { _, type, eve
 
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
         Task { @MainActor in controller.reenableEventTap() }
-    } else if type == .leftMouseDown {
-        let flags = event.flags
+        return Unmanaged.passUnretained(event)
+    }
+
+    let flags = event.flags
+    let relevantFlags = flags.intersection([.maskAlternate, .maskControl, .maskCommand, .maskShift])
+    guard relevantFlags == .maskAlternate else {
+        return Unmanaged.passUnretained(event)
+    }
+
+    if type == .leftMouseDown {
         Task { @MainActor in controller.handleMouseDown(flags: flags) }
+        // This Option-click is an application gesture, not a click intended
+        // for the target app. Suppressing it prevents macOS Option-click
+        // behavior from hiding an app, changing focus, or reflowing yabai.
+        return nil
+    }
+    if type == .leftMouseUp {
+        return nil
     }
     return Unmanaged.passUnretained(event)
 }
