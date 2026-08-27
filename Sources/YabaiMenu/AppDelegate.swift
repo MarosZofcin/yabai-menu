@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let yabai = YabaiController()
     private lazy var branchHighlight = BranchHighlightController(yabai: yabai) { [weak self] message in
         guard let self else { return }
-        self.operationStatus = message
+        self.branchHighlightStatus = message
         self.rebuildMenu()
     }
 
@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var snapshot = YabaiSnapshot(isRunning: false, displays: [])
     private var floatingApps: [FloatingApp] = []
     private var currentApp: RunningApplication?
+    private var branchHighlightStatus = "BSP highlight: Starting…"
     private var operationStatus: String?
     private var operationInProgress = false
     private var gitHubState = GitHubSyncState.unknown
@@ -127,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(disabledItem("Current app: \(currentApp?.name ?? "Unavailable")"))
-        menu.addItem(disabledItem("Option-click tiled window: Highlight BSP branch"))
+        menu.addItem(disabledItem(Self.shortened(branchHighlightStatus)))
         if let currentApp {
             let isFloating = store.contains(floatingApps, application: currentApp)
             let title = isFloating ? "Remove \(currentApp.name) from Floating Apps" : "Float \(currentApp.name)"
