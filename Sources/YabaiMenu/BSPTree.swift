@@ -199,7 +199,15 @@ struct BSPTreeResolver {
         }
         guard !candidates.isEmpty else { throw BSPTreeError.hierarchyCouldNotBeResolved }
 
-        let paths = candidates.compactMap { candidate -> [BSPBranch]? in
+        // Minimum-size overflow can make more than one geometric partition
+        // plausible even after yabai's leaf split metadata is enforced. The
+        // real tree is the candidate requiring the least sibling overlap.
+        // Keep failing closed if equally undistorted candidates disagree.
+        let minimumDistortion = candidates.map(\.overlapDistortion).min() ?? 0
+        let bestCandidates = candidates.filter {
+            abs($0.overlapDistortion - minimumDistortion) <= 0.001
+        }
+        let paths = bestCandidates.compactMap { candidate -> [BSPBranch]? in
             let path = candidate.branches(to: targetWindowID)
             return path.isEmpty ? nil : path
         }
@@ -289,6 +297,27 @@ private indirect enum CandidateNode {
             return leaf.windowIDs
         case .split(_, let first, let second, _):
             return first.windowIDs.union(second.windowIDs)
+        }
+    }
+
+    var overlapDistortion: CGFloat {
+        switch self {
+        case .leaf:
+            return 0
+        case .split(let axis, let first, let second, _):
+            let firstFrame = first.frame
+            let secondFrame = second.frame
+            let overlap: CGFloat
+            let smallerLength: CGFloat
+            if axis == .vertical {
+                overlap = max(0, min(firstFrame.maxX, secondFrame.maxX) - max(firstFrame.minX, secondFrame.minX))
+                smallerLength = min(firstFrame.width, secondFrame.width)
+            } else {
+                overlap = max(0, min(firstFrame.maxY, secondFrame.maxY) - max(firstFrame.minY, secondFrame.minY))
+                smallerLength = min(firstFrame.height, secondFrame.height)
+            }
+            let localDistortion = smallerLength > 0 ? overlap / smallerLength : .greatestFiniteMagnitude
+            return first.overlapDistortion + second.overlapDistortion + localDistortion
         }
     }
 
