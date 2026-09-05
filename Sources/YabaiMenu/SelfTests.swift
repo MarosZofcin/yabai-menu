@@ -663,6 +663,23 @@ enum SelfTests {
         guard verified.contains("com.apple.finder") else {
             throw AppError.message("Git sync did not push the yabairc change.")
         }
+
+        let manuallyEdited = try String(contentsOf: clientYabairc, encoding: .utf8)
+            + "\nyabai -m config left_padding 120\n"
+        try manuallyEdited.write(to: clientYabairc, atomically: true, encoding: .utf8)
+        let autoCommitReport = try sync.sync()
+        guard autoCommitReport.message == "Saved yabairc and synchronized with GitHub" else {
+            throw AppError.message("Manual yabairc edits were not reported as automatically committed.")
+        }
+
+        try requireGit(["pull", "--ff-only"], in: verifier)
+        let autoCommitted = try String(
+            contentsOf: verifier.appendingPathComponent("yabai/yabairc"),
+            encoding: .utf8
+        )
+        guard autoCommitted.contains("yabai -m config left_padding 120") else {
+            throw AppError.message("Manual yabairc edit was not automatically committed and pushed.")
+        }
     }
 
     private static func requireGit(_ arguments: [String], in directory: URL) throws {

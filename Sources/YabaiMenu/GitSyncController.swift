@@ -11,6 +11,7 @@ struct GitSyncController: Sendable {
         }
 
         let before = try? Data(contentsOf: managedFileURL)
+        let autoCommitted = try commitManagedFile(message: "Update yabai configuration")
         let changedPaths = try workingTreeChanges()
         guard changedPaths.isEmpty else {
             let preview = changedPaths.prefix(3).joined(separator: ", ")
@@ -51,13 +52,13 @@ struct GitSyncController: Sendable {
 
         let after = try? Data(contentsOf: managedFileURL)
         return GitSyncReport(
-            message: "Synchronized with GitHub",
+            message: autoCommitted ? "Saved yabairc and synchronized with GitHub" : "Synchronized with GitHub",
             synchronizedAt: Date(),
             configChanged: before != after
         )
     }
 
-    func commitManagedFile() throws -> Bool {
+    func commitManagedFile(message: String = "Update yabai floating apps") throws -> Bool {
         let relativePath = try managedRelativePath()
         let changes = try workingTreeChanges()
         let unrelated = changes.filter { $0 != relativePath }
@@ -65,6 +66,7 @@ struct GitSyncController: Sendable {
             throw GitSyncFailure.localChanges("Could not commit because dotfiles also contains changes in \(unrelated.prefix(3).joined(separator: ", "))")
         }
 
+        try validateManagedFile()
         try requireGit(["add", "--", relativePath], failurePrefix: "Could not stage yabairc")
         let staged = git(["diff", "--cached", "--quiet", "--", relativePath])
         if staged.status == 0 { return false }
@@ -72,7 +74,7 @@ struct GitSyncController: Sendable {
             throw GitSyncFailure.error("Could not inspect the staged yabairc: \(staged.usefulError)")
         }
         try requireGit(
-            ["commit", "-m", "Update yabai floating apps", "--", relativePath],
+            ["commit", "-m", message, "--", relativePath],
             failurePrefix: "Could not commit yabairc"
         )
         return true
@@ -89,6 +91,18 @@ struct GitSyncController: Sendable {
             return String(path.dropFirst().dropLast())
         }
         return path
+    }
+
+    private func validateManagedFile() throws {
+        let result = ProcessRunner.run(
+            URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-n", managedFileURL.path]
+        )
+        guard result.succeeded else {
+            throw GitSyncFailure.localChanges(
+                "yabairc was not committed because its shell syntax is invalid: \(result.usefulError)"
+            )
+        }
     }
 
     private func workingTreeChanges() throws -> [String] {

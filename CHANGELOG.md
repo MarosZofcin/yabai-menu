@@ -4,6 +4,18 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-05
+
+### Added
+
+- Automatically validate, commit, and synchronize manual `yabai/yabairc`
+  changes when it is the only modified dotfiles file.
+- Make **Reload yabai** save and synchronize a valid manual configuration edit
+  before restarting yabai.
+- Keep unrelated working-tree changes protected from automatic commits.
+- Add a local Git regression test covering an automatically committed and
+  pushed manual padding change.
+
 ### Documentation
 
 - Add a beginner-first explanation of tiling, BSP groups, visual window moves,
@@ -67,7 +79,8 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
-[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.0.0

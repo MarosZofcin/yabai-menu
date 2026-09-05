@@ -135,6 +135,8 @@ That narrow workflow is the reason for Yabai Menu. It is not intended to replace
 - start, stop, and reload yabai
 - conservative GitHub synchronization
 - synchronization at launch, after wake, every hour, before blacklist changes, and on demand
+- automatic shell validation, commit, and push when `yabai/yabairc` is the only locally changed file
+- **Reload yabai** saves and synchronizes a valid manual `yabairc` edit before restarting the service
 - visible GitHub state and last successful synchronization time
 - optional launch at login
 - Control+Shift hover inspection of the nearest BSP parent branch
@@ -365,7 +367,9 @@ Removing an application follows the same process. Windows that were floating bec
 
 ### When another Mac changes the blacklist
 
-At launch, after wake, once per hour, or after **Sync Now**, the receiving Mac fetches the upstream branch. A clean behind branch is fast-forwarded, the updated rules are loaded from `yabairc`, and they are applied to the running yabai instance. If the Mac is asleep or offline, it catches up during the next successful synchronization.
+At launch, after wake, once per hour, or after **Sync Now**, Yabai Menu first checks the working tree. If `yabai/yabairc` is the only changed file, the complete script is validated with `/bin/sh -n`, committed as **Update yabai configuration**, and synchronized automatically. Changes in any other file still pause synchronization so unrelated work is never committed implicitly.
+
+The receiving Mac then fetches the upstream branch. A clean behind branch is fast-forwarded, the updated rules are loaded from `yabairc`, and they are applied to the running yabai instance. **Reload yabai** uses the same safe save-and-sync path before restarting yabai. If the Mac is asleep or offline, it catches up during the next successful synchronization.
 
 ### Inspecting and editing a BSP layout
 
@@ -418,7 +422,7 @@ export includes both the current and previous segment.
 |---|---|
 | `GitHub: Synced` | Fetch/pull/push completed and the branch matches its upstream |
 | `GitHub: Syncing…` | A Git operation is currently running |
-| `GitHub: Local changes` | The repository contains uncommitted work; automatic mutation is paused |
+| `GitHub: Local changes` | Files other than `yabai/yabairc` contain uncommitted work, or the edited `yabairc` failed validation; automatic mutation is paused |
 | `GitHub: Conflict` | Local and remote commits could not be rebased safely; the rebase was aborted |
 | `GitHub: Not synchronized` | Authentication, network, upstream, or another Git error prevented synchronization |
 
@@ -455,7 +459,7 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 6. **Enable “Launch Yabai Menu at Login” on every participating Mac.** This starts the menu app and its launch/wake/hourly synchronization. It does not replace yabai's own launchd service.
 7. **Treat the marked block as app-owned.** Manual rules and general yabai configuration belong outside the `YABAI MENU: FLOATING APPS` markers. If you edit inside the block manually, preserve both markers and one complete rule per line.
 8. **Avoid simultaneous edits on two Macs.** The app synchronizes before each change, which makes conflicts rare, but two truly concurrent edits can still diverge. Resolve that state in Git before continuing.
-9. **Use “Edit yabairc” for deliberate manual changes.** Commit those changes yourself before asking Yabai Menu to synchronize again.
+9. **Use “Edit yabairc” for deliberate manual changes.** Save the file and choose **Reload yabai** or **Sync Now**. If it passes shell validation and no other dotfiles are modified, Yabai Menu commits and synchronizes it automatically.
 10. **Prefer specific app patterns.** Exact app-name rules reduce accidental matches. Remember that some application names are localized by macOS, so verify the visible name on every Mac that uses a different system language.
 11. **Do not disable SIP unless you need scripting-addition features.** Ordinary tiling and floating rules use the Accessibility API. Review yabai's official [SIP guidance](https://github.com/asmvik/yabai/wiki/Disabling-System-Integrity-Protection) before enabling advanced features.
 12. **Recheck after macOS or yabai upgrades.** Launch yabai manually, verify Accessibility permission, run **Sync Now**, and test one reversible float/unfloat action before relying on the setup.
