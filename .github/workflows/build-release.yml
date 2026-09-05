@@ -20,6 +20,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       runtime: ${{ steps.version.outputs.runtime }}
+      runtime_api: ${{ steps.version.outputs.runtime_api }}
       build_host: ${{ steps.version.outputs.build_host }}
     steps:
       - uses: actions/checkout@v4
@@ -35,10 +36,13 @@ jobs:
           set -euo pipefail
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
           runtime=$(node -p 'require("./Runtime/manifest.json").version')
+          runtime_api=$(node -p 'require("./Runtime/manifest.json").api')
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$runtime" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$runtime_api" =~ ^[0-9]+$ ]]
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          echo "runtime_api=$runtime_api" >> "$GITHUB_OUTPUT"
           if git rev-parse --verify "refs/tags/v$version" >/dev/null 2>&1; then
             # Host sources MUST NOT silently change under an existing version.
             git diff --exit-code "v$version" HEAD -- Sources Resources Package.swift build.sh
@@ -97,6 +101,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HOST_VERSION: ${{ needs.build.outputs.version }}
           RUNTIME_VERSION: ${{ needs.build.outputs.runtime }}
+          RUNTIME_API: ${{ needs.build.outputs.runtime_api }}
           BUILD_HOST: ${{ needs.build.outputs.build_host }}
         run: |
           set -euo pipefail
@@ -112,7 +117,7 @@ jobs:
             gh release create "runtime-v$RUNTIME_VERSION" "release/Yabai-Menu-Runtime-$RUNTIME_VERSION.json" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
               --title "$RUNTIME_VERSION · Runtime" \
-              --notes "Runtime-only data/code update for Host API 1. Does not replace or re-sign Yabai Menu.app. See docs/ARCHITECTURE.md and AGENTS.md before contributing."
+              --notes "Runtime-only data/code update requiring Host API $RUNTIME_API. Does not replace or re-sign Yabai Menu.app. See docs/ARCHITECTURE.md and AGENTS.md before contributing."
           fi
           # Normalize display names; tags, published assets and dates stay intact.
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \

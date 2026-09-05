@@ -13,30 +13,80 @@ OS upgrades, MDM policy, revoked consent and system bugs can still affect access
 An on-device before/after consent check is required before claiming tested TCC
 retention. CI does not grant or inspect a person's real privacy permissions.
 
-## Actual boundary (not a claim that the entire application is external)
+Host 1.2.0 deliberately broadens the frozen-host strategy with a reusable
+**System Services** category. Instead of adding one-off native implementations,
+the host emits bounded JSON events and accepts only a small allowlist of typed
+operations. Runtime remains pure JavaScript and never receives native objects.
+This lets future runtime releases implement new policies over already-exposed
+system events without rebuilding the permission-bearing host.
+
+## Actual boundary
 
 | Runtime-owned | Host-owned |
 | --- | --- |
 | BSP leaf grouping, candidate search, ambiguity checks and ancestor selection | Querying windows, validating returned IDs/geometry, AppKit/AX/event tap access |
 | Git integration plan and success messages | File scope/syntax validation, conflict recovery, non-force Git commands |
 | Selected menu action order/titles/sections and timer values | Fixed selector allowlist, permission UI, recovery menu, timer limits |
+| Clipboard-cleaning policy and future decisions over System Services events | Clipboard observation and guarded replacement, lifecycle/workspace/display event capture |
+| Decisions using small namespaced runtime state | UserDefaults storage with host-side key/value validation |
 | Future pure decision functions via versioned JSON inputs/outputs | Drag state machine, overlay rendering, stable rule IDs and safe blacklist serialization |
 
-This first host retains native I/O and event orchestration intentionally. The
-goal is a small trusted boundary, not the smallest line count at the expense of
-safety. General Swift changes cannot be delivered as runtime JSON. New native
-capabilities require an explicit host release.
+The goal is a small trusted boundary, not the smallest line count at the expense
+of safety. General Swift changes still cannot be delivered as runtime JSON.
+New native authority requires an explicit host release; new policy over existing
+System Services normally does not.
 
 User layout rules, margins and floating entries remain in dotfiles. Runtime
 updates must never reset user-specific settings. Timer defaults belong to the
 runtime; the update-enabled toggle is a local UserDefaults preference.
 
+## System Services contract
+
+`SystemServiceController` is the only generic runtime-facing native capability
+layer. It is intentionally event/operation based rather than a generic bridge.
+Runtime calls still execute in the existing short-lived JavaScriptCore worker.
+
+Current event kinds:
+
+- `clipboard.text.changed` — at most 1 MB of UTF-8 text.
+- `host.started` — host/build/macOS metadata.
+- `workspace.application.activated` — localized app name and bundle identifier.
+- `workspace.didWake` and `workspace.willSleep`.
+- `display.configuration.changed`.
+
+Current allowed operation kinds:
+
+- `clipboard.replaceText` — accepted only as a response to the exact clipboard
+  change that produced the event. The host verifies `NSPasteboard.changeCount`
+  again before writing so a slower runtime cannot overwrite a newer user copy.
+- `state.set` / `state.remove` — tiny primitive values under keys prefixed
+  `runtime.`; no arbitrary files or defaults domains are exposed.
+
+The host accepts at most 16 operations from one event. Unknown operations are
+ignored. Text and state values are bounded. A runtime response cannot introduce
+new native authority by inventing operation names.
+
+Clipboard observation polls `NSPasteboard.changeCount` every 100 ms on the main
+run loop. It ignores non-text clipboard contents. When the host performs a
+runtime-requested replacement it immediately records the new change count,
+preventing self-triggered loops. It also checks that the clipboard has not
+changed while the runtime worker was evaluating the event.
+
+This release intentionally exposes several no-op event families before they are
+needed by a feature. They are useful general primitives for later policies, but
+exposing an event is not equivalent to authorizing a native action. For example,
+a future runtime can react to app activation or wake using existing allowed
+state operations, but cannot launch an app or alter displays unless a later host
+explicitly adds such an operation.
+
 ## Files and versions
 
-- `Resources/Info.plist`: HOST version/build (1.1.0 / 8 initially).
+- `Resources/Info.plist`: HOST version/build (1.2.0 / 9 for this release).
 - `Runtime/manifest.json`: runtime API, independent semantic version, menu/timers.
-- `Runtime/runtime.js`: pure decision code with `dispatch(method,input)`.
-- `scripts/package-runtime.js`: validates/packages these as one JSON asset.
+- `Runtime/runtime.js`: pure decision code with `dispatch(method,input)` including
+  `systemEvent` policy.
+- `Sources/YabaiMenu/SystemServiceController.swift`: native event/operation gate.
+- `scripts/package-runtime.js`: validates/packages runtime as one JSON asset.
 - `.app/Contents/Resources/bootstrap-runtime.json`: offline fallback, sealed once
   when the host is built. Never modified by runtime updates.
 - `~/Library/Application Support/Yabai Menu/Runtime/active.json`: active package.
@@ -53,12 +103,21 @@ worker. That entry point does not initialize AppKit, event taps or permission
 prompts. JavaScriptCore receives plain JSON only; no Foundation/Objective-C
 objects or native callbacks are exported. Evaluation has a 4-second parent
 watchdog, 1 MB protocol limits and BSP search limits. Results are checked before
-use. Only the host executes its hard-coded Git/yabai/file operations.
+use. Only the host executes hard-coded Git/yabai/file/System Services operations.
 
 This is not an OS sandbox against a JavaScriptCore engine exploit, and the
 runtime package must still be trusted. It is NOT an unrestricted shell plugin.
 Do not add a generic process runner as an API shortcut. The child time limit
 protects availability; it is not a memory quota or a formal security proof.
+
+## Clipboard policy in Runtime 1.2.0
+
+The first System Services consumer is automatic clipboard cleaning. Runtime
+1.2.0 removes a trailing `Čítajte viac:` attribution injected by Živé/Aktuality
+only when it points to `zive.aktuality.sk`, and strips known tracking query
+parameters from copied HTTP/HTTPS URLs. Functional query parameters are kept.
+The policy lives entirely in `Runtime/runtime.js`, so its rules can be refined
+later by runtime-only updates without another host replacement.
 
 ## Update and recovery
 
@@ -100,15 +159,20 @@ runtime-only behavior of host 1.1.0 and later.
 ## Release/test checklist
 
 1. Runtime change: bump runtime only. CI compares host files to the released tag.
-2. CI downloads the existing host ZIP and tests the candidate with it. Do not
-   substitute a freshly built binary; this catches accidental API dependence.
-3. Retest BSP fixtures, stacked leaves, minimum-width overlap, no-parent and
+2. CI downloads the existing host ZIP and tests a runtime-only candidate with it.
+   Do not substitute a freshly built binary; this catches accidental API dependence.
+3. New-host releases build/sign/archive the explicitly bumped host and run all
+   native self-tests with the bundled bootstrap runtime.
+4. Retest BSP fixtures, stacked leaves, minimum-width overlap, no-parent and
    ambiguous trees; Git autocommit/push with isolated local repositories.
-4. Test corrupt payload, wrong API, invalid version, untrusted URL and timeout.
-5. On a real Mac: approve bootstrap once; note AX/Input Monitoring states and
-   `codesign -dvvv` CDHash. Install a runtime-only update; verify unchanged CDHash,
-   menu changes and working Ctrl+Shift hover / Ctrl+Option drag with no new prompts.
-6. Test rollback, restart, offline wake, failed download and the second Mac.
+5. Runtime self-test must cover System Services policy such as tracking cleanup
+   and publisher-copy-footer removal. Host compilation validates the typed gate.
+6. Test corrupt payload, wrong API, invalid version, untrusted URL and timeout.
+7. On a real Mac: approve the new host if macOS asks; verify AX/Input Monitoring,
+   BSP hover/drag, automatic clipboard cleaning, Maccy coexistence, and that a
+   subsequent runtime-only update leaves the host CDHash unchanged.
+8. Test rollback, restart, offline wake, failed download and the second Mac.
 
 Never promise this is the last host update forever. Fixes to the native trust
-boundary or macOS API changes may require a new manually approved host.
+boundary or genuinely new macOS authority may require another manually approved
+host. Prefer extending policy over the existing System Services category first.

@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'Runtime/manifest.json'), 'utf8'));
 const script = fs.readFileSync(path.join(root, 'Runtime/runtime.js'), 'utf8');
-assert.equal(manifest.api, 1);
+assert.equal(manifest.api, 2);
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 const context = vm.createContext({});
 vm.runInContext(script, context, {timeout: 1000});
@@ -19,6 +19,15 @@ assert.deepEqual(call('selfTest', {}), {ok:true});
 assert.equal(call('gitPlan', {ahead:2,behind:0}).integration, 'none');
 assert.equal(call('gitPlan', {ahead:0,behind:3}).integration, 'fastForward');
 assert.equal(call('gitPlan', {ahead:2,behind:3}).integration, 'rebase');
+const systemResult = call('systemEvent', {
+    kind:'clipboard.text.changed',
+    payload:{text:'https://example.com/a?id=7&utm_source=x&fbclid=y'},
+    state:{}
+});
+assert.deepEqual(systemResult, {operations:[{kind:'clipboard.replaceText',text:'https://example.com/a?id=7'}]});
+assert.deepEqual(call('systemEvent', {
+    kind:'workspace.didWake', payload:{}, state:{}
+}), {operations:[]});
 const window = (id,x,child) => ({id,space:1,display:1,frame:{x,y:0,w:500,h:800},
     'has-ax-reference':true,'is-visible':true,'is-floating':false,'is-hidden':false,
     'is-minimized':false,'split-type':'vertical','split-child':child,'stack-index':0});

@@ -15,6 +15,18 @@ shell, generic git/yabai command runner, or network bridge may be exported.
 Do not put untrusted text into executable shell scripts. Host safety checks are
 not runtime policy and may not be moved into downloaded code.
 
+Host 1.2.0 adds a reusable **System Services** boundary. Prefer it before adding
+new native code. The host may emit bounded, documented JSON events to runtime
+and may execute only explicitly allowlisted native operations. Current event
+families include clipboard text changes, host lifecycle, workspace application
+activation/wake/sleep, and display-configuration changes. Current operation
+families include guarded clipboard text replacement and small namespaced runtime
+state set/remove operations. Extend runtime policy freely within those existing
+events/operations. Adding a new native authority, broad bridge, arbitrary AppKit
+selector, filesystem/shell/process/network access, or unbounded payload still
+requires an explicit host release and review. Unknown operations must fail closed
+or be ignored; runtime must never gain native objects directly.
+
 For a runtime release:
 
 1. Keep `Sources/`, `Resources/`, `Package.swift`, and `build.sh` unchanged.
@@ -27,8 +39,9 @@ For a runtime release:
 
 For an unavoidable host change:
 
-1. Explain why the existing Host API cannot implement the change; obtain user
-   approval for the permission-changing manual host upgrade.
+1. Explain why the existing Host API/System Services capability set cannot
+   implement the change; obtain user approval for the permission-changing manual
+   host upgrade.
 2. Increment Info.plist version AND build. Increment Host API only if incompatible.
 3. Keep an offline bootstrap runtime bundled; test all current features.
 4. Publish a NEW host ZIP, never silently replace existing installations.
@@ -51,8 +64,9 @@ it to deleting other drafts or tags.
 ## Honesty and verification
 
 Current runtime extraction is substantial but not total: BSP reconstruction,
-Git integration planning/messages, selected menu composition and timers are
-external. Native event/drag orchestration, AX rendering, blacklist serialization,
+Git integration planning/messages, selected menu composition, timers, clipboard
+cleaning policy and other System Services decisions are external. Native event
+capture/execution, drag orchestration, AX rendering, blacklist serialization,
 Git I/O and validation remain host code. Do not claim these are already external.
 Expand the declarative API deliberately; do not replace it with arbitrary shell.
 

@@ -18,7 +18,9 @@ struct RuntimePackage: Codable {
 // no Foundation/ObjC objects or executable-launching callbacks are exported.
 final class RuntimeController: @unchecked Sendable {
     static let shared = RuntimeController()
-    static let api = 1
+    // API 2 adds the generic system-event/allowlisted-operation bridge. API 1
+    // runtimes remain valid on this host; API 2 runtimes are rejected by old hosts.
+    static let api = 2
     static let maximumBytes = 1_000_000
     private let lock = NSLock()
     private var current: RuntimePackage?
@@ -46,7 +48,7 @@ final class RuntimeController: @unchecked Sendable {
     static func decode(_ data: Data) throws -> RuntimePackage {
         guard data.count <= maximumBytes else { throw AppError.message("Runtime package is too large.") }
         let package = try JSONDecoder().decode(RuntimePackage.self, from: data)
-        guard package.api == api, versionParts(package.version) != nil,
+        guard package.api >= 1, package.api <= api, versionParts(package.version) != nil,
               !package.script.isEmpty, package.menu.count <= 50 else {
             throw AppError.message("Runtime requires a different host API or contains invalid metadata.")
         }

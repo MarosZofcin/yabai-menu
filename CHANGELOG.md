@@ -4,6 +4,27 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Host 1.2.0 / Runtime 1.2.0] - 2026-09-05
+
+- Add Host API 2 with a reusable **System Services** bridge instead of a
+  clipboard-specific native shortcut. The host emits bounded JSON events and
+  executes only explicit allowlisted operations returned by the runtime.
+- Expose text clipboard changes, application activation, sleep/wake, display
+  configuration changes and host startup as system events that future runtime
+  releases can react to without rebuilding the app.
+- Add namespaced small persistent runtime state through UserDefaults. The bridge
+  still exposes no arbitrary AppKit/Objective-C callbacks, filesystem access,
+  shell, generic process execution or network API to downloaded runtime code.
+- Add automatic clipboard cleaning as the first System Services policy. Remove
+  known tracking parameters such as `utm_*`, `fbclid`, `gclid`, `msclkid`,
+  `ttclid` and related identifiers while preserving functional query parameters.
+- Remove the `Čítajte viac:` copy-injection footer from Živé/Aktuality copied
+  text, restricted to that site's URL so ordinary prose is not stripped.
+- Protect clipboard races: a runtime response may replace text only if the
+  pasteboard has not changed since the corresponding event was emitted.
+- Host API 2 accepts older API 1 runtimes for rollback/backward compatibility;
+  API 2 runtimes are rejected by Host 1.1.0, preventing false compatibility.
+
 ## [Runtime 1.1.1 — unchanged Host 1.1.0] - 2026-09-05
 
 - Clarify the configuration action as **Save & Sync yabairc**, matching its
