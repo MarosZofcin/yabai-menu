@@ -101,8 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$BUILD_HOST" = true ]; then
-            # Do not advertise this permission-changing bootstrap to the legacy
-            # 1.0.4 whole-app updater. Users install host upgrades explicitly.
+            # Create immutable host assets. The native updater remains runtime-only.
             gh release create "v$HOST_VERSION" "release/Yabai-Menu-$HOST_VERSION.zip" \
               "release/Yabai-Menu-Runtime-$RUNTIME_VERSION.json" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
@@ -115,3 +114,6 @@ jobs:
               --title "Yabai Menu runtime $RUNTIME_VERSION (Host API 1)" \
               --notes "Runtime-only data/code update for Host API 1. Does not replace or re-sign Yabai Menu.app. See docs/ARCHITECTURE.md and AGENTS.md before contributing."
           fi
+          # Keep GitHub's download recommendation on the installable host,
+          # never on a runtime-only JSON release. This only changes metadata.
+          gh release edit "v$HOST_VERSION" --repo "$GITHUB_REPOSITORY" --latest

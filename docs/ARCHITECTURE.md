@@ -86,9 +86,16 @@ use **Restore Previous Runtime**, which also pauses auto-updates to avoid an
 immediate reinstall. Use **Automatically Update Runtime** to resume deliberately.
 Offline/download/hash/API/test errors keep the current runtime intact.
 
-Host upgrades are manual via **Host Releases (Manual Installation)**. Legacy
-1.0.4 users must install 1.1.0 manually; releases are marked not-latest to avoid
-advertising this permission-changing transition to its whole-app updater.
+Host upgrades are manual via **Host Releases (Manual Installation)**. GitHub's
+**Latest** label points to the current installable host ZIP, not a runtime-only
+release. Runtime discovery scans releases independently of that label.
+
+Host 1.1.0 was initially not-latest to avoid triggering the legacy 1.0.4 whole-app
+updater during migration. On 2026-09-05 the owner confirmed the remaining Mac
+runs a pre-updater version and will be migrated manually, so this temporary
+restriction was removed. Existing 1.0.4 installations elsewhere can still react
+to GitHub's Latest label using their legacy updater; this does not change the
+runtime-only behavior of host 1.1.0 and later.
 
 ## Release/test checklist
 
