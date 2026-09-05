@@ -4,6 +4,25 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Host 1.1.0 / Runtime 1.1.0] - 2026-09-05
+
+- Remove whole-app automatic replacement. The native host is manually installed;
+  subsequent runtime updates never write to or re-sign the app bundle.
+- Move BSP reconstruction (including stacked leaves and minimum-size overlap),
+  Git integration planning/messages, selected menu composition and timer policy
+  into an independent JSON/JavaScript runtime.
+- Evaluate pure runtime functions in short-lived JavaScriptCore workers, with
+  no native callbacks, bounded protocol sizes and a four-second watchdog.
+- Validate release URLs, sizes, SHA-256 digests and Host API; run the native BSP
+  and isolated Git regression fixtures against candidates before atomic activation.
+- Keep previous runtime, offer rollback with auto-update pause, and bundle an
+  offline fallback. Show host/runtime versions separately in the menu.
+- Add AGENTS.md and docs/ARCHITECTURE.md with a runtime-first release contract;
+  CI tests future runtimes using the unchanged already-released host binary.
+- Capture child output without pipe deadlocks and bound command execution time.
+- macOS CI tests do not establish TCC permission retention; verify real consent
+  and overlays on each Mac after a runtime-only update before claiming that.
+
 ## [1.0.4] - 2026-09-05
 
 ### Added

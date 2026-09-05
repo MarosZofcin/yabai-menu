@@ -35,13 +35,25 @@ struct GitSyncController: Sendable {
         let ahead = counts[0]
         let behind = counts[1]
 
-        if ahead > 0 && behind > 0 {
+        guard let plan = try RuntimeController.shared.call("gitPlan", input: ["ahead": ahead, "behind": behind]) as? [String: String],
+              let integration = plan["integration"],
+              ["rebase", "fastForward", "none"].contains(integration) else {
+            throw GitSyncFailure.error("Runtime returned an unsupported Git integration plan.")
+        }
+        // Safety remains native: do not allow a runtime to overwrite local
+        // commits or skip integration of a behind branch before pushing.
+        guard (behind == 0 && integration == "none") ||
+              (behind > 0 && integration == "rebase") ||
+              (behind > 0 && ahead == 0 && integration == "fastForward") else {
+            throw GitSyncFailure.error("Runtime Git plan violates host safety constraints.")
+        }
+        if integration == "rebase" {
             let pull = git(["pull", "--rebase"])
             guard pull.succeeded else {
                 abortRebaseIfNeeded()
                 throw GitSyncFailure.conflict("GitHub conflict: local commits were preserved. \(pull.usefulError)")
             }
-        } else if behind > 0 {
+        } else if integration == "fastForward" {
             try requireGit(["merge", "--ff-only", upstream], failurePrefix: "Could not fast-forward from GitHub")
         }
 
@@ -51,8 +63,9 @@ struct GitSyncController: Sendable {
         }
 
         let after = try? Data(contentsOf: managedFileURL)
+        let message = (try? RuntimeController.shared.call("syncMessage", input: ["autoCommitted": autoCommitted])) as? String
         return GitSyncReport(
-            message: autoCommitted ? "Saved yabairc and synchronized with GitHub" : "Synchronized with GitHub",
+            message: message ?? "Synchronized with GitHub",
             synchronizedAt: Date(),
             configChanged: before != after
         )

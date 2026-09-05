@@ -73,21 +73,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
         branchHighlight.start()
 
-        statusTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshStatus() }
-        }
-        hourlySyncTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.performGitSync(reason: "Hourly sync") }
-        }
-        automaticUpdateTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkForUpdates(silent: true) }
-        }
+        configureTimers()
 
         DispatchQueue.main.async { [weak self] in
             self?.performGitSync(reason: "Startup sync")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + RuntimeController.shared.interval("wakeDelay", fallback: 15)) { [weak self] in
             self?.checkForUpdates(silent: true)
+        }
+    }
+
+    private func configureTimers() {
+        statusTimer?.invalidate()
+        hourlySyncTimer?.invalidate()
+        automaticUpdateTimer?.invalidate()
+        let runtime = RuntimeController.shared
+        statusTimer = Timer.scheduledTimer(withTimeInterval: runtime.interval("statusInterval", fallback: 3), repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshStatus() }
+        }
+        hourlySyncTimer = Timer.scheduledTimer(withTimeInterval: runtime.interval("syncInterval", fallback: 3600), repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.performGitSync(reason: "Hourly sync") }
+        }
+        automaticUpdateTimer = Timer.scheduledTimer(withTimeInterval: runtime.interval("updateInterval", fallback: 21600), repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkForUpdates(silent: true) }
         }
     }
 
@@ -112,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func systemDidWake(_ notification: Notification) {
         performGitSync(reason: "Wake sync")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + RuntimeController.shared.interval("wakeDelay", fallback: 15)) { [weak self] in
             self?.checkForUpdates(silent: true)
         }
     }
@@ -163,8 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(disabledItem("Inspect branch: Control + Shift + hover"))
         menu.addItem(disabledItem("Move window: Control + Option + drag"))
-        menu.addItem(actionItem("Test BSP Highlight in 3 Seconds", #selector(testBSPHighlight)))
-        menu.addItem(actionItem("Balance Current Space", #selector(balanceCurrentSpace)))
+        appendRuntimeMenu(to: menu, section: "tools")
         let undoItem = actionItem("Undo Last Warp", #selector(undoLastWarp))
         undoItem.isEnabled = !operationInProgress && branchHighlight.canUndo
         menu.addItem(undoItem)
@@ -199,23 +206,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         if snapshot.isRunning {
-            menu.addItem(actionItem("Reload yabai", #selector(reloadYabai)))
-            menu.addItem(actionItem("Stop yabai", #selector(stopYabai)))
+            appendRuntimeMenu(to: menu, section: "running")
         } else {
-            menu.addItem(actionItem("Start yabai", #selector(startYabai)))
+            appendRuntimeMenu(to: menu, section: "stopped")
         }
 
         menu.addItem(.separator())
         menu.addItem(disabledItem("GitHub: \(gitHubState.title)"))
         let syncDate = lastSuccessfulSync.map { Self.syncDateFormatter.string(from: $0) } ?? "Never"
         menu.addItem(disabledItem("Last sync: \(syncDate)"))
-        menu.addItem(actionItem("Sync Now", #selector(syncNow)))
+        appendRuntimeMenu(to: menu, section: "sync")
         if let operationStatus {
             menu.addItem(disabledItem(Self.shortened(operationStatus)))
         }
 
-        menu.addItem(actionItem("Edit yabairc", #selector(editYabairc)))
-        menu.addItem(actionItem("Open dotfiles Folder", #selector(openRepository)))
+        appendRuntimeMenu(to: menu, section: "files")
         let loggingItem = actionItem("Detailed Diagnostic Logging", #selector(toggleDiagnosticLogging))
         loggingItem.state = diagnostics.isEnabled ? .on : .off
         menu.addItem(loggingItem)
@@ -231,6 +236,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let updateItem = actionItem(updateMenuTitle, #selector(checkForUpdatesNow))
         updateItem.isEnabled = !operationInProgress && !updateCheckInProgress
         menu.addItem(updateItem)
+        let autoItem = actionItem("Automatically Update Runtime", #selector(toggleRuntimeUpdates))
+        autoItem.state = UserDefaults.standard.bool(forKey: "runtimeUpdatesDisabled") ? .off : .on
+        menu.addItem(autoItem)
+        menu.addItem(actionItem("Restore Previous Runtime", #selector(restorePreviousRuntime)))
+        menu.addItem(actionItem("Host Releases (Manual Installation)", #selector(openHostReleases)))
+        let runtimeVersion = (try? RuntimeController.shared.package().version) ?? "Unavailable"
+        menu.addItem(disabledItem("Runtime \(runtimeVersion) · Host API \(RuntimeController.api)"))
         menu.addItem(disabledItem(Self.versionTitle))
         menu.addItem(actionItem("Quit Yabai Menu", #selector(quitApp), key: "q"))
         statusItem.menu = menu
@@ -238,6 +250,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func testBSPHighlight() {
         branchHighlight.runDiagnostic()
+    }
+
+    private func appendRuntimeMenu(to menu: NSMenu, section: String) {
+        // Explicit selector map: runtime strings are never interpreted as ObjC
+        // selectors, shell commands or paths.
+        let actions: [String: Selector] = [
+            "testBSPHighlight": #selector(testBSPHighlight),
+            "balanceCurrentSpace": #selector(balanceCurrentSpace),
+            "editYabairc": #selector(editYabairc), "openRepository": #selector(openRepository),
+            "reloadYabai": #selector(reloadYabai), "stopYabai": #selector(stopYabai),
+            "startYabai": #selector(startYabai), "syncNow": #selector(syncNow)
+        ]
+        for entry in (try? RuntimeController.shared.package().menu) ?? [] where entry.section == section {
+            if let selector = actions[entry.action] { menu.addItem(actionItem(entry.title, selector)) }
+        }
+    }
+
+    @objc private func toggleRuntimeUpdates() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: "runtimeUpdatesDisabled"), forKey: "runtimeUpdatesDisabled")
+        rebuildMenu()
+    }
+
+    @objc private func restorePreviousRuntime() {
+        do {
+            try RuntimeController.shared.rollback()
+            UserDefaults.standard.set(true, forKey: "runtimeUpdatesDisabled")
+            updateMenuTitle = "Runtime Restored (Automatic Updates Paused)"
+            configureTimers()
+        } catch { operationStatus = error.localizedDescription }
+        rebuildMenu()
+    }
+
+    @objc private func openHostReleases() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/MarosZofcin/yabai-menu/releases")!)
     }
 
     @objc private func balanceCurrentSpace() {
@@ -554,6 +601,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func checkForUpdates(silent: Bool) {
+        if silent && UserDefaults.standard.bool(forKey: "runtimeUpdatesDisabled") { return }
         guard !updateCheckInProgress else { return }
         guard !operationInProgress else {
             if silent {
@@ -565,26 +613,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         updateCheckInProgress = true
-        updateMenuTitle = "Checking for Updates…"
+        operationInProgress = true
+        updateMenuTitle = "Checking Runtime Updates…"
         rebuildMenu()
 
         automaticUpdater.checkAndInstall { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.updateCheckInProgress = false
+                self.operationInProgress = false
 
                 switch result {
                 case .success(.upToDate):
                     self.updateMenuTitle = "Check for Updates (Up to Date)"
                     self.diagnostics.log("automatic_update_up_to_date")
                     self.rebuildMenu()
-                case .success(.installationStarted(let version)):
-                    self.updateMenuTitle = "Installing Yabai Menu \(version)…"
-                    self.diagnostics.log("automatic_update_installing", ["version": version])
+                case .success(.runtimeInstalled(let version)):
+                    self.updateMenuTitle = "Runtime \(version) Installed"
+                    self.diagnostics.log("runtime_update_installed", ["version": version])
+                    self.configureTimers()
                     self.rebuildMenu()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        NSApp.terminate(nil)
-                    }
                 case .failure(let error):
                     self.updateMenuTitle = "Check for Updates (Last Check Failed)"
                     self.diagnostics.log("automatic_update_failed", ["error": error.localizedDescription])

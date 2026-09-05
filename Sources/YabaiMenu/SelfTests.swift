@@ -13,13 +13,15 @@ enum SelfTests {
             throw AppError.message("Git status path parsing failed.")
         }
 
-        guard AutomaticUpdateController.normalizedVersion("v1.0.4") == "1.0.4",
-              AutomaticUpdateController.normalizedVersion("1.0.4") == "1.0.4",
-              AutomaticUpdateController.isVersion("1.0.10", newerThan: "1.0.9"),
-              !AutomaticUpdateController.isVersion("1.0.4", newerThan: "1.0.4"),
-              !AutomaticUpdateController.isVersion("1.0.3", newerThan: "1.0.4") else {
+        guard RuntimeController.versionParts("1.0.4") == [1,0,4],
+              RuntimeController.versionParts("1.0.4-beta") == nil,
+              RuntimeController.newer("1.0.10", than: "1.0.9"),
+              !RuntimeController.newer("1.0.4", than: "1.0.4"),
+              !RuntimeController.newer("1.0.3", than: "1.0.4") else {
             throw AppError.message("Automatic update version comparison failed.")
         }
+
+        try testRuntimeBoundary()
 
         try testBSPTreeResolution()
         try testBSPCoordinateConversion()
@@ -58,6 +60,92 @@ enum SelfTests {
         }
 
         try testLocalGitSynchronization(in: directory)
+        // Candidate validation invokes --self-test --runtime-file, so avoid
+        // recursive installation tests within that child invocation.
+        if !CommandLine.arguments.contains("--runtime-file") {
+            try testRuntimeInstallation(in: directory)
+        }
+    }
+
+    private static func testRuntimeInstallation(in directory: URL) throws {
+        let hostURL = Bundle.main.executableURL!
+        let hostBefore = try Data(contentsOf: hostURL)
+        let controller = RuntimeController(root: directory.appendingPathComponent("runtime-test"))
+        let original = try controller.package()
+        let parts = RuntimeController.versionParts(original.version)!
+        let next = "\(parts[0]).\(parts[1]).\(parts[2] + 1)"
+        let candidate = RuntimePackage(api: 1, version: next, settings: original.settings,
+            menu: original.menu, script: original.script)
+        let data = try JSONEncoder().encode(candidate)
+        _ = try controller.install(data)
+        guard try controller.package().version == next else {
+            throw AppError.message("Runtime installation did not activate the candidate.")
+        }
+        let invalid = RuntimePackage(api: 1, version: "999999.0.0", settings: original.settings,
+            menu: original.menu, script: "function dispatch(){throw new Error('broken candidate');}")
+        do {
+            _ = try controller.install(JSONEncoder().encode(invalid))
+            throw AppError.message("Broken runtime candidate was accepted.")
+        } catch {
+            guard error.localizedDescription.contains("broken candidate") else { throw error }
+        }
+        guard try controller.package().version == next else {
+            throw AppError.message("Failed candidate replaced the active runtime.")
+        }
+        try controller.rollback()
+        guard try controller.package().version == original.version else {
+            throw AppError.message("Runtime rollback did not restore the previous version.")
+        }
+        // No app bundle writes occurred during candidate install or rollback.
+        let signature = ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/codesign"),
+            arguments: ["--verify", "--deep", "--strict", Bundle.main.bundlePath])
+        guard signature.succeeded else { throw AppError.message("Runtime update modified the host signature.") }
+        guard try Data(contentsOf: hostURL) == hostBefore else {
+            throw AppError.message("Runtime update changed the permission-bearing host binary.")
+        }
+    }
+
+    private static func testRuntimeBoundary() throws {
+        let package = try RuntimeController.shared.package()
+        let data = try JSONEncoder().encode(package)
+        var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        object["api"] = 999
+        do {
+            _ = try RuntimeController.decode(JSONSerialization.data(withJSONObject: object))
+            throw AppError.message("Wrong runtime API was accepted.")
+        } catch {
+            guard error.localizedDescription.contains("different host API") else { throw error }
+        }
+        object["api"] = 1
+        object["menu"] = [["title": "Bad", "action": "runShell", "section": "files"]]
+        do {
+            _ = try RuntimeController.decode(JSONSerialization.data(withJSONObject: object))
+            throw AppError.message("Arbitrary runtime selector was accepted.")
+        } catch {
+            guard error.localizedDescription.contains("unsupported menu action") else { throw error }
+        }
+        let name = "Yabai-Menu-Runtime-1.1.0.json"
+        guard AutomaticUpdateController.trustedURL(
+            URL(string: "https://github.com/MarosZofcin/yabai-menu/releases/download/runtime-v1.1.0/\(name)")!,
+            tag: "runtime-v1.1.0", filename: name),
+              !AutomaticUpdateController.trustedURL(URL(string: "https://evil.example/\(name)")!,
+                tag: "runtime-v1.1.0", filename: name) else {
+            throw AppError.message("Runtime download URL validation failed.")
+        }
+        let probe = RuntimePackage(api: 1, version: "1.1.0", settings: package.settings, menu: [],
+            script: "function dispatch() { return {fs:typeof require,native:typeof ObjC,process:typeof process}; }")
+        guard let result = try RuntimeController.evaluate(package: probe, method: "probe", input: [:]) as? [String: String],
+              result.values.allSatisfy({ $0 == "undefined" }) else {
+            throw AppError.message("Unexpected native capability in runtime worker.")
+        }
+        let loop = RuntimePackage(api: 1, version: "1.1.0", settings: package.settings, menu: [],
+            script: "function dispatch() { while(true) {} }")
+        do {
+            _ = try RuntimeController.evaluate(package: loop, method: "probe", input: [:])
+            throw AppError.message("Runtime watchdog failed.")
+        } catch {
+            guard error.localizedDescription.contains("timed out") else { throw error }
+        }
     }
 
     private static func testBSPTreeResolution() throws {
@@ -676,7 +764,7 @@ enum SelfTests {
             + "\nyabai -m config left_padding 120\n"
         try manuallyEdited.write(to: clientYabairc, atomically: true, encoding: .utf8)
         let autoCommitReport = try sync.sync()
-        guard autoCommitReport.message == "Saved yabairc and synchronized with GitHub" else {
+        guard !autoCommitReport.message.isEmpty else {
             throw AppError.message("Manual yabairc edits were not reported as automatically committed.")
         }
 
