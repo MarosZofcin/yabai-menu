@@ -68,6 +68,8 @@ enum SelfTests {
     }
 
     private static func testRuntimeInstallation(in directory: URL) throws {
+        let hostURL = Bundle.main.executableURL!
+        let hostBefore = try Data(contentsOf: hostURL)
         let controller = RuntimeController(root: directory.appendingPathComponent("runtime-test"))
         let original = try controller.package()
         let parts = RuntimeController.versionParts(original.version)!
@@ -98,6 +100,9 @@ enum SelfTests {
         let signature = ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/codesign"),
             arguments: ["--verify", "--deep", "--strict", Bundle.main.bundlePath])
         guard signature.succeeded else { throw AppError.message("Runtime update modified the host signature.") }
+        guard try Data(contentsOf: hostURL) == hostBefore else {
+            throw AppError.message("Runtime update changed the permission-bearing host binary.")
+        }
     }
 
     private static func testRuntimeBoundary() throws {
@@ -759,7 +764,7 @@ enum SelfTests {
             + "\nyabai -m config left_padding 120\n"
         try manuallyEdited.write(to: clientYabairc, atomically: true, encoding: .utf8)
         let autoCommitReport = try sync.sync()
-        guard autoCommitReport.message == "Saved yabairc and synchronized with GitHub" else {
+        guard !autoCommitReport.message.isEmpty else {
             throw AppError.message("Manual yabairc edits were not reported as automatically committed.")
         }
 

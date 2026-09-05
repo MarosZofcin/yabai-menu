@@ -524,8 +524,8 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 4. Follow the complete [Privacy & Security permission guide](#macos-privacy--security-permissions-step-by-step). Enable **Yabai Menu** under both Accessibility and Input Monitoring, and make sure yabai has its own Accessibility permission.
 5. Enable **Launch Yabai Menu at Login** if you want background synchronization and automatic update checks after login and wake.
 
-Version 1.0.4 must be installed manually once on each Mac. Later releases update
-automatically from this repository's verified GitHub Release archive.
+Host 1.1.0 must be installed manually once on each Mac. Later runtime releases
+update automatically without replacing the app; native host upgrades stay manual.
 
 The downloadable app is ad-hoc signed for local use. A paid Apple Developer certificate is not required. If macOS blocks the first launch, Control-click the app and choose **Open**.
 
