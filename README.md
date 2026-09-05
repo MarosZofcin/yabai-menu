@@ -464,7 +464,16 @@ design for avoiding update-induced consent resets; real AX/Input Monitoring
 retention on both Macs still requires an on-device check. OS/MDM changes can
 still revoke consent.
 
-The menu shows **host and runtime versions separately**. Use **Automatically
+The menu shows **host and runtime versions separately**.
+
+- **Host Releases (Manual Installation)** opens GitHub Releases for manually
+  downloading a new native app. Clicking it does not install anything. Normal
+  runtime updates do not require this item.
+- **Restore Previous Runtime** returns to the locally saved previous runtime if
+  an update causes a problem. It also pauses automatic runtime updates until
+  you enable them again. It does not revert your `yabairc` or Git commits.
+
+The update controls work as follows. Use **Automatically
 Update Runtime** to pause/resume checks, **Restore Previous Runtime** to recover
 (and pause updates), or **Host Releases (Manual Installation)** for native upgrades.
 Ordinary runtime errors leave the host running. An invalid persisted package
@@ -487,6 +496,19 @@ it is not an unrestricted shell-plugin system.
 The app uses the system `/usr/bin/git` and the existing `origin`/upstream configuration in `~/dotfiles`. It never stores GitHub credentials. HTTPS credentials are read by Git through macOS Keychain; SSH repositories use the user's existing SSH setup.
 
 Synchronization auto-commits a valid change to yabai/yabairc only; unrelated uncommitted changes pause synchronization. Fast-forward updates are preferred. If a rebase conflicts, it is aborted and local commits are preserved.
+
+For a terminal-free edit, choose **Edit yabairc**, change the values, and **save
+the file in your editor**. Then choose **Reload yabai**: it validates the saved
+configuration, commits and pushes it, and restarts yabai so all configuration
+changes take effect. **Save & Sync yabairc** commits and synchronizes the saved
+file without restarting yabai; general layout or margin edits still need a reload.
+Neither menu action saves an unsaved editor buffer.
+
+Saving in the editor does not immediately trigger a push. If you do nothing
+else, the next synchronization attempts the commit/push automatically: at app
+launch, after wake, or every hour while Yabai Menu is running. You can check
+**GitHub: Synced** in the menu to confirm success. Git errors, invalid shell syntax,
+or unrelated local changes are reported rather than silently discarded.
 
 Because automatic synchronization can pull and push the whole dotfiles branch, read the source and make sure this workflow matches your repository before using the app.
 
@@ -527,7 +549,22 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 Host 1.1.0 must be installed manually once on each Mac. Later runtime releases
 update automatically without replacing the app; native host upgrades stay manual.
 
-The downloadable app is ad-hoc signed for local use. A paid Apple Developer certificate is not required. If macOS blocks the first launch, Control-click the app and choose **Open**.
+The downloadable app is ad-hoc signed for local use; it has no Apple Developer ID
+signature or notarization. A paid Apple Developer certificate is not required.
+
+If macOS blocks the first launch because the developer cannot be verified:
+
+1. Try opening `/Applications/Yabai Menu.app` once and dismiss the warning.
+2. Open **System Settings → Privacy & Security**, scroll to **Security**, and
+   click **Open Anyway** for Yabai Menu.
+3. Authenticate and confirm **Open** when prompted. See
+   [Apple's official instructions](https://support.apple.com/en-us/102445).
+4. Then enable the two separate permissions described above:
+   **Accessibility** and **Input Monitoring**. Reopen the app if macOS asks.
+
+The first-launch approval and these two privacy permissions are separate steps.
+Repeat this setup on each Mac as needed when installing a new native host.
+Ordinary runtime-only updates keep the approved host unchanged.
 
 ## Build from source
 
