@@ -4,6 +4,13 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Runtime 1.1.1 — unchanged Host 1.1.0] - 2026-09-05
+
+- Clarify the configuration action as **Save & Sync yabairc**, matching its
+  automatic commit behavior. This menu-only runtime release verifies the
+  runtime delivery workflow against the already-released host, with no native
+  source changes, rebuild, app replacement or re-signing.
+
 ## [Host 1.1.0 / Runtime 1.1.0] - 2026-09-05
 
 - Remove whole-app automatic replacement. The native host is manually installed;
