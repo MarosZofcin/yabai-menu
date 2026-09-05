@@ -4,6 +4,22 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-09-05
+
+### Added
+
+- Automatically check the repository's latest GitHub Release shortly after
+  launch, after wake, and every six hours.
+- Download and install a newer verified release without Terminal or manual app
+  replacement, then relaunch Yabai Menu.
+- Verify the expected repository download URL, release asset size, GitHub
+  SHA-256 digest, bundle identifier, version, code signature, executable bit,
+  and application self-tests before replacing the installed app.
+- Restore the previous application automatically if the final copy or
+  verification fails.
+- Add **Check for Updates** to the menu for an immediate manual check.
+
+
 ## [1.0.3] - 2026-09-05
 
 ### Added

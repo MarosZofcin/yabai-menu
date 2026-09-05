@@ -13,6 +13,14 @@ enum SelfTests {
             throw AppError.message("Git status path parsing failed.")
         }
 
+        guard AutomaticUpdateController.normalizedVersion("v1.0.4") == "1.0.4",
+              AutomaticUpdateController.normalizedVersion("1.0.4") == "1.0.4",
+              AutomaticUpdateController.isVersion("1.0.10", newerThan: "1.0.9"),
+              !AutomaticUpdateController.isVersion("1.0.4", newerThan: "1.0.4"),
+              !AutomaticUpdateController.isVersion("1.0.3", newerThan: "1.0.4") else {
+            throw AppError.message("Automatic update version comparison failed.")
+        }
+
         try testBSPTreeResolution()
         try testBSPCoordinateConversion()
         try testBSPWarpDirections()

@@ -136,6 +136,7 @@ That narrow workflow is the reason for Yabai Menu. It is not intended to replace
 - conservative GitHub synchronization
 - synchronization at launch, after wake, every hour, before blacklist changes, and on demand
 - automatic shell validation, commit, and push when `yabai/yabairc` is the only locally changed file
+- automatic application updates from verified GitHub Release archives at launch, after wake, and every six hours
 - **Reload yabai** saves and synchronizes a valid manual `yabairc` edit before restarting the service
 - visible GitHub state and last successful synchronization time
 - optional launch at login
@@ -348,7 +349,8 @@ and [Input Monitoring](https://support.apple.com/guide/mac-help/control-access-t
 3. It queries yabai for its service, display, and Space state.
 4. It checks the current foreground application.
 5. It synchronizes the clean dotfiles branch with its configured upstream.
-6. It starts the hourly synchronization timer and listens for system wake events.
+6. It checks GitHub Releases for a newer Yabai Menu build.
+7. It starts the hourly configuration-sync timer, the six-hour update timer, and listens for system wake events.
 
 ### When you choose “Float current app”
 
@@ -441,6 +443,33 @@ Yabai Menu reads existing one-line `manage=off` rules from `yabairc`. On the fir
 
 Only this block is managed. Before writing, the complete shell script is validated with `sh -n`; the update is atomic and preserves executable permissions. Changes are also applied dynamically to a running yabai instance, so a full restart is normally unnecessary.
 
+## Automatic application updates
+
+Starting with version 1.0.4, Yabai Menu checks this repository's latest published
+GitHub Release shortly after launch, after the Mac wakes, and every six hours.
+A newer release is downloaded and installed automatically, then the menu app
+relaunches itself. **Check for Updates** performs the same check immediately.
+
+Before replacing the installed application, the updater verifies:
+
+- the exact `MarosZofcin/yabai-menu` GitHub Release download path
+- the release asset's expected filename and byte size
+- the SHA-256 digest returned by GitHub
+- the extracted bundle identifier and release version
+- the complete macOS code signature and executable permission
+- the application's built-in self-tests
+
+The previous app remains available as a temporary backup until the copied
+replacement passes final verification. If copying or verification fails, the
+updater restores the previous app and reopens it. Automatic replacement requires
+the app to be installed in a writable location, normally `/Applications`.
+
+Version 1.0.3 and older do not contain the updater. Install 1.0.4 manually once
+on each Mac; future releases can then update themselves. Releases are ad-hoc
+signed, so macOS can occasionally ask for Accessibility or Input Monitoring
+permission again after an update. The menu displays **Required** and links to the
+correct Privacy & Security panel when that happens.
+
 ## GitHub synchronization
 
 The app uses the system `/usr/bin/git` and the existing `origin`/upstream configuration in `~/dotfiles`. It never stores GitHub credentials. HTTPS credentials are read by Git through macOS Keychain; SSH repositories use the user's existing SSH setup.
@@ -481,7 +510,10 @@ Because automatic synchronization can pull and push the whole dotfiles branch, r
 2. Unzip and move `Yabai Menu.app` to `/Applications`.
 3. Open the app. It appears only in the menu bar.
 4. Follow the complete [Privacy & Security permission guide](#macos-privacy--security-permissions-step-by-step). Enable **Yabai Menu** under both Accessibility and Input Monitoring, and make sure yabai has its own Accessibility permission.
-5. Enable **Launch Yabai Menu at Login** if you want background synchronization after login and wake.
+5. Enable **Launch Yabai Menu at Login** if you want background synchronization and automatic update checks after login and wake.
+
+Version 1.0.4 must be installed manually once on each Mac. Later releases update
+automatically from this repository's verified GitHub Release archive.
 
 The downloadable app is ad-hoc signed for local use. A paid Apple Developer certificate is not required. If macOS blocks the first launch, Control-click the app and choose **Open**.
 
