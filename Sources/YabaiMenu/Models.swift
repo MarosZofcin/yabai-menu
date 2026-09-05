@@ -93,4 +93,3 @@ enum GitSyncFailure: LocalizedError {
         }
     }
 }
-

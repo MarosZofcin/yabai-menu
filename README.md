@@ -7,7 +7,7 @@ on screen: it can show which tiled windows belong together, move a tiled window
 to a new position with the mouse, and rebalance the result without requiring the
 user to learn yabai commands.
 
-**[Download the latest Yabai Menu release](https://github.com/MarosZofcin/yabai-menu/releases/latest)**
+**[Download the stable host bootstrap (1.1.0)](https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.1.0)**
 
 > [!IMPORTANT]
 > This first release is intentionally opinionated. It expects a Git repository at `~/dotfiles` and a yabai configuration at `~/dotfiles/yabai/yabairc`, normally linked from `~/.config/yabai/yabairc`. See **Current scope** before installing.
@@ -136,7 +136,7 @@ That narrow workflow is the reason for Yabai Menu. It is not intended to replace
 - conservative GitHub synchronization
 - synchronization at launch, after wake, every hour, before blacklist changes, and on demand
 - automatic shell validation, commit, and push when `yabai/yabairc` is the only locally changed file
-- automatic application updates from verified GitHub Release archives at launch, after wake, and every six hours
+- runtime-only updates from verified GitHub Release assets at launch, after wake, and every six hours; native app replacement is manual
 - **Reload yabai** saves and synchronizes a valid manual `yabairc` edit before restarting the service
 - visible GitHub state and last successful synchronization time
 - optional launch at login
@@ -443,38 +443,50 @@ Yabai Menu reads existing one-line `manage=off` rules from `yabairc`. On the fir
 
 Only this block is managed. Before writing, the complete shell script is validated with `sh -n`; the update is atomic and preserves executable permissions. Changes are also applied dynamically to a running yabai instance, so a full restart is normally unnecessary.
 
-## Automatic application updates
+## Stable host and runtime-only updates (1.1.0+)
 
-Starting with version 1.0.4, Yabai Menu checks this repository's latest published
-GitHub Release shortly after launch, after the Mac wakes, and every six hours.
-A newer release is downloaded and installed automatically, then the menu app
-relaunches itself. **Check for Updates** performs the same check immediately.
+**Install [host 1.1.0](https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.1.0)
+manually once on each Mac**, replacing the old app while it is quit. Grant
+Accessibility and Input Monitoring to this host if macOS requires it.
 
-Before replacing the installed application, the updater verifies:
+The host never replaces, edits or re-signs its own app bundle. Automatic updates
+now install only a JSON/JavaScript runtime under
+`~/Library/Application Support/Yabai Menu/Runtime/`. The runtime currently owns
+BSP reconstruction, Git integration planning/messages, selected menu composition
+and timer settings. Native I/O, privacy controls, event/drag orchestration, safe
+blacklist serialization and drawing remain in the host.
 
-- the exact `MarosZofcin/yabai-menu` GitHub Release download path
-- the release asset's expected filename and byte size
-- the SHA-256 digest returned by GitHub
-- the extracted bundle identifier and release version
-- the complete macOS code signature and executable permission
-- the application's built-in self-tests
+Runtime updates are checked after launch/wake and every six hours. They are
+verified against the official repository's release URL, asset size, SHA-256
+digest and Host API, then run the regression tests before activation. The app
+stays open and the permission-bearing binary stays unchanged. This is the
+design for avoiding update-induced consent resets; real AX/Input Monitoring
+retention on both Macs still requires an on-device check. OS/MDM changes can
+still revoke consent.
 
-The previous app remains available as a temporary backup until the copied
-replacement passes final verification. If copying or verification fails, the
-updater restores the previous app and reopens it. Automatic replacement requires
-the app to be installed in a writable location, normally `/Applications`.
+The menu shows **host and runtime versions separately**. Use **Automatically
+Update Runtime** to pause/resume checks, **Restore Previous Runtime** to recover
+(and pause updates), or **Host Releases (Manual Installation)** for native upgrades.
+Ordinary runtime errors leave the host running. An invalid persisted package
+falls back to the sealed bootstrap; network/update failures retain the current
+runtime. Host updates may still require new macOS approvals.
 
-Version 1.0.3 and older do not contain the updater. Install 1.0.4 manually once
-on each Mac; future releases can then update themselves. Releases are ad-hoc
-signed, so macOS can occasionally ask for Accessibility or Input Monitoring
-permission again after an update. The menu displays **Required** and links to the
-correct Privacy & Security panel when that happens.
+**For contributors and AI agents:** read [AGENTS.md](AGENTS.md) and
+[the architecture/release contract](docs/ARCHITECTURE.md). A runtime release must
+not rebuild the host; CI downloads and tests against the exact released binary.
+Increment `Runtime/manifest.json` for runtime releases, not Info.plist. A new host
+version requires a justified, explicitly approved manual upgrade.
+
+The trust root is HTTPS plus this GitHub repository's publishing authority.
+The checksum is not an independent publisher signature. Runtime JS is evaluated
+in bounded workers without exposed filesystem, network or process-launching APIs;
+it is not an unrestricted shell-plugin system.
 
 ## GitHub synchronization
 
 The app uses the system `/usr/bin/git` and the existing `origin`/upstream configuration in `~/dotfiles`. It never stores GitHub credentials. HTTPS credentials are read by Git through macOS Keychain; SSH repositories use the user's existing SSH setup.
 
-Synchronization pauses instead of modifying the repository when it finds uncommitted changes. Fast-forward updates are preferred. If a rebase conflicts, it is aborted and local commits are preserved.
+Synchronization auto-commits a valid change to yabai/yabairc only; unrelated uncommitted changes pause synchronization. Fast-forward updates are preferred. If a rebase conflicts, it is aborted and local commits are preserved.
 
 Because automatic synchronization can pull and push the whole dotfiles branch, read the source and make sure this workflow matches your repository before using the app.
 
@@ -519,7 +531,7 @@ The downloadable app is ad-hoc signed for local use. A paid Apple Developer cert
 
 ## Build from source
 
-Only Apple's Command Line Tools are required:
+Apple's Command Line Tools and Node.js (22 in CI) are required:
 
 ```sh
 git clone https://github.com/MarosZofcin/yabai-menu.git

@@ -60,6 +60,44 @@ enum SelfTests {
         }
 
         try testLocalGitSynchronization(in: directory)
+        // Candidate validation invokes --self-test --runtime-file, so avoid
+        // recursive installation tests within that child invocation.
+        if !CommandLine.arguments.contains("--runtime-file") {
+            try testRuntimeInstallation(in: directory)
+        }
+    }
+
+    private static func testRuntimeInstallation(in directory: URL) throws {
+        let controller = RuntimeController(root: directory.appendingPathComponent("runtime-test"))
+        let original = try controller.package()
+        let parts = RuntimeController.versionParts(original.version)!
+        let next = "\(parts[0]).\(parts[1]).\(parts[2] + 1)"
+        let candidate = RuntimePackage(api: 1, version: next, settings: original.settings,
+            menu: original.menu, script: original.script)
+        let data = try JSONEncoder().encode(candidate)
+        _ = try controller.install(data)
+        guard try controller.package().version == next else {
+            throw AppError.message("Runtime installation did not activate the candidate.")
+        }
+        let invalid = RuntimePackage(api: 1, version: "999999.0.0", settings: original.settings,
+            menu: original.menu, script: "function dispatch(){throw new Error('broken candidate');}")
+        do {
+            _ = try controller.install(JSONEncoder().encode(invalid))
+            throw AppError.message("Broken runtime candidate was accepted.")
+        } catch {
+            guard error.localizedDescription.contains("broken candidate") else { throw error }
+        }
+        guard try controller.package().version == next else {
+            throw AppError.message("Failed candidate replaced the active runtime.")
+        }
+        try controller.rollback()
+        guard try controller.package().version == original.version else {
+            throw AppError.message("Runtime rollback did not restore the previous version.")
+        }
+        // No app bundle writes occurred during candidate install or rollback.
+        let signature = ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/codesign"),
+            arguments: ["--verify", "--deep", "--strict", Bundle.main.bundlePath])
+        guard signature.succeeded else { throw AppError.message("Runtime update modified the host signature.") }
     }
 
     private static func testRuntimeBoundary() throws {

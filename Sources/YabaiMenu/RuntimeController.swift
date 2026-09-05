@@ -23,8 +23,12 @@ final class RuntimeController: @unchecked Sendable {
     private let lock = NSLock()
     private var current: RuntimePackage?
     private var previous: RuntimePackage?
-    private let root = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/Yabai Menu/Runtime", isDirectory: true)
+    private let root: URL
+
+    init(root: URL? = nil) {
+        self.root = root ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Yabai Menu/Runtime", isDirectory: true)
+    }
 
     static func versionParts(_ value: String) -> [Int]? {
         let parts = value.split(separator: ".", omittingEmptySubsequences: false)
@@ -46,9 +50,10 @@ final class RuntimeController: @unchecked Sendable {
               !package.script.isEmpty, package.menu.count <= 50 else {
             throw AppError.message("Runtime requires a different host API or contains invalid metadata.")
         }
-        let allowed = Set(["testBSPHighlight", "balanceCurrentSpace", "editYabairc", "openRepository"])
+        let allowed = Set(["testBSPHighlight", "balanceCurrentSpace", "editYabairc", "openRepository",
+            "reloadYabai", "stopYabai", "startYabai", "syncNow"])
         guard package.menu.allSatisfy({ allowed.contains($0.action) &&
-            ["tools", "files"].contains($0.section) && !$0.title.isEmpty && $0.title.count <= 100 }) else {
+            ["tools", "files", "running", "stopped", "sync"].contains($0.section) && !$0.title.isEmpty && $0.title.count <= 100 }) else {
             throw AppError.message("Runtime requested an unsupported menu action.")
         }
         let limits: [String: ClosedRange<Double>] = ["statusInterval": 1...60,

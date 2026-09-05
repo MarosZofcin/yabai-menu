@@ -206,17 +206,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         if snapshot.isRunning {
-            menu.addItem(actionItem("Reload yabai", #selector(reloadYabai)))
-            menu.addItem(actionItem("Stop yabai", #selector(stopYabai)))
+            appendRuntimeMenu(to: menu, section: "running")
         } else {
-            menu.addItem(actionItem("Start yabai", #selector(startYabai)))
+            appendRuntimeMenu(to: menu, section: "stopped")
         }
 
         menu.addItem(.separator())
         menu.addItem(disabledItem("GitHub: \(gitHubState.title)"))
         let syncDate = lastSuccessfulSync.map { Self.syncDateFormatter.string(from: $0) } ?? "Never"
         menu.addItem(disabledItem("Last sync: \(syncDate)"))
-        menu.addItem(actionItem("Sync Now", #selector(syncNow)))
+        appendRuntimeMenu(to: menu, section: "sync")
         if let operationStatus {
             menu.addItem(disabledItem(Self.shortened(operationStatus)))
         }
@@ -259,7 +258,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let actions: [String: Selector] = [
             "testBSPHighlight": #selector(testBSPHighlight),
             "balanceCurrentSpace": #selector(balanceCurrentSpace),
-            "editYabairc": #selector(editYabairc), "openRepository": #selector(openRepository)
+            "editYabairc": #selector(editYabairc), "openRepository": #selector(openRepository),
+            "reloadYabai": #selector(reloadYabai), "stopYabai": #selector(stopYabai),
+            "startYabai": #selector(startYabai), "syncNow": #selector(syncNow)
         ]
         for entry in (try? RuntimeController.shared.package().menu) ?? [] where entry.section == section {
             if let selector = actions[entry.action] { menu.addItem(actionItem(entry.title, selector)) }

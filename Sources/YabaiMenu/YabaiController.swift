@@ -497,4 +497,3 @@ struct YabaiController: Sendable {
 private struct BSPSpaceSnapshot: Decodable {
     let type: String
 }
-

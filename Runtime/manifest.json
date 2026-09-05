@@ -10,6 +10,10 @@
   "menu": [
     {"title":"Test BSP Highlight in 3 Seconds","action":"testBSPHighlight","section":"tools"},
     {"title":"Balance Current Space","action":"balanceCurrentSpace","section":"tools"},
+    {"title":"Reload yabai","action":"reloadYabai","section":"running"},
+    {"title":"Stop yabai","action":"stopYabai","section":"running"},
+    {"title":"Start yabai","action":"startYabai","section":"stopped"},
+    {"title":"Sync Now","action":"syncNow","section":"sync"},
     {"title":"Edit yabairc","action":"editYabairc","section":"files"},
     {"title":"Open dotfiles Folder","action":"openRepository","section":"files"}
   ]
