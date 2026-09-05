@@ -22,10 +22,14 @@ export CLANG_MODULE_CACHE_PATH SWIFTPM_MODULECACHE_OVERRIDE
 
 swift build -c release --disable-sandbox
 
+node scripts/package-runtime.js "$OUTPUT_ROOT"
+RUNTIME_VERSION=$(node -p 'require("./Runtime/manifest.json").version')
+
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp ".build/release/YabaiMenu" "$APP_DIR/Contents/MacOS/YabaiMenu"
 cp "Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
+cp "$OUTPUT_ROOT/Yabai-Menu-Runtime-$RUNTIME_VERSION.json" "$APP_DIR/Contents/Resources/bootstrap-runtime.json"
 chmod 755 "$APP_DIR/Contents/MacOS/YabaiMenu"
 
 # Finder and some copy tools can attach metadata that macOS code signing

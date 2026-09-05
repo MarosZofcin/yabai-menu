@@ -3,8 +3,7 @@ name: Build and Release
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,74 +15,103 @@ concurrency:
 
 jobs:
   build:
-    name: Build and verify macOS app
+    name: Verify frozen host and runtime
     runs-on: macos-15
     outputs:
-      version: ${{ steps.version.outputs.value }}
-      archive: ${{ steps.version.outputs.archive }}
-
+      version: ${{ steps.version.outputs.version }}
+      runtime: ${{ steps.version.outputs.runtime }}
+      build_host: ${{ steps.version.outputs.build_host }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Read application version
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate version boundary
         id: version
         shell: bash
         run: |
           set -euo pipefail
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Unsupported CFBundleShortVersionString: $version" >&2
-            exit 1
+          runtime=$(node -p 'require("./Runtime/manifest.json").version')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$runtime" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          if git rev-parse --verify "refs/tags/v$version" >/dev/null 2>&1; then
+            # Host sources MUST NOT silently change under an existing version.
+            git diff --exit-code "v$version" HEAD -- Sources Resources Package.swift build.sh
+            echo "build_host=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_host=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "value=$version" >> "$GITHUB_OUTPUT"
-          echo "archive=Yabai-Menu-$version.zip" >> "$GITHUB_OUTPUT"
-
-      - name: Build, sign, package, and self-test
-        run: ./build.sh
-
-      - name: Verify release archive exists
+          if git rev-parse --verify "refs/tags/runtime-v$runtime" >/dev/null 2>&1; then
+            git diff --exit-code "runtime-v$runtime" HEAD -- Runtime
+          fi
+      - name: Build new bootstrap host only when explicitly versioned
+        if: steps.version.outputs.build_host == 'true'
+        run: sh build.sh
+      - name: Test runtime against unchanged released host
+        if: steps.version.outputs.build_host == 'false'
         shell: bash
-        run: test -f "dist/${{ steps.version.outputs.archive }}"
-
-      - name: Upload verified archive
-        uses: actions/upload-artifact@v4
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOST_VERSION: ${{ steps.version.outputs.version }}
+          RUNTIME_VERSION: ${{ steps.version.outputs.runtime }}
+        run: |
+          set -euo pipefail
+          node scripts/package-runtime.js dist
+          gh release download "v$HOST_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern "Yabai-Menu-$HOST_VERSION.zip" --dir dist
+          unzip -q "dist/Yabai-Menu-$HOST_VERSION.zip" -d dist/host
+          codesign --verify --deep --strict "dist/host/Yabai Menu.app"
+          before=$(shasum -a 256 "dist/host/Yabai Menu.app/Contents/MacOS/YabaiMenu")
+          "dist/host/Yabai Menu.app/Contents/MacOS/YabaiMenu" --self-test \
+            --runtime-file "$PWD/dist/Yabai-Menu-Runtime-$RUNTIME_VERSION.json"
+          after=$(shasum -a 256 "dist/host/Yabai Menu.app/Contents/MacOS/YabaiMenu")
+          test "$before" = "$after"
+          codesign --verify --deep --strict "dist/host/Yabai Menu.app"
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.version.outputs.archive }}
-          path: dist/${{ steps.version.outputs.archive }}
+          name: verified-release
+          path: |
+            dist/*.zip
+            dist/Yabai-Menu-Runtime-*.json
           if-no-files-found: error
-          retention-days: 14
 
   release:
-    name: Publish new version
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Download verified archive
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.build.outputs.archive }}
+          name: verified-release
           path: release
-
-      - name: Create tag and GitHub release when version is new
+      - name: Publish separate host and runtime releases
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.build.outputs.version }}
-          ARCHIVE: ${{ needs.build.outputs.archive }}
+          HOST_VERSION: ${{ needs.build.outputs.version }}
+          RUNTIME_VERSION: ${{ needs.build.outputs.runtime }}
+          BUILD_HOST: ${{ needs.build.outputs.build_host }}
         run: |
           set -euo pipefail
-          tag="v$VERSION"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $tag already exists; nothing to publish."
-            exit 0
+          if [ "$BUILD_HOST" = true ]; then
+            # Do not advertise this permission-changing bootstrap to the legacy
+            # 1.0.4 whole-app updater. Users install host upgrades explicitly.
+            gh release create "v$HOST_VERSION" "release/Yabai-Menu-$HOST_VERSION.zip" \
+              "release/Yabai-Menu-Runtime-$RUNTIME_VERSION.json" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+              --title "Yabai Menu $HOST_VERSION — stable host bootstrap" \
+              --notes "Install this host manually once. It never replaces its own app bundle. Runtime updates use separate runtime-v tags. macOS permissions must be granted after this bootstrap; their retention across runtime updates still requires an on-device test."
           fi
-          gh release create "$tag" "release/$ARCHIVE" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Yabai Menu $VERSION" \
-            --generate-notes
+          if ! gh release view "runtime-v$RUNTIME_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "runtime-v$RUNTIME_VERSION" "release/Yabai-Menu-Runtime-$RUNTIME_VERSION.json" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+              --title "Yabai Menu runtime $RUNTIME_VERSION (Host API 1)" \
+              --notes "Runtime-only data/code update for Host API 1. Does not replace or re-sign Yabai Menu.app. See docs/ARCHITECTURE.md and AGENTS.md before contributing."
+          fi

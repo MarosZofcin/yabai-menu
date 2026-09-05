@@ -722,3 +722,4 @@ private final class BranchOverlayView: NSView {
         path.stroke()
     }
 }
+

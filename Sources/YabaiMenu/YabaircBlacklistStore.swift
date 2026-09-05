@@ -258,3 +258,4 @@ struct YabaircBlacklistStore: Sendable {
         return name.isEmpty ? pattern : name
     }
 }
+

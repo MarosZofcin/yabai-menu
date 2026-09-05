@@ -126,3 +126,4 @@ final class DiagnosticLogger: @unchecked Sendable {
         }
     }
 }
+

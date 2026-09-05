@@ -13,13 +13,15 @@ enum SelfTests {
             throw AppError.message("Git status path parsing failed.")
         }
 
-        guard AutomaticUpdateController.normalizedVersion("v1.0.4") == "1.0.4",
-              AutomaticUpdateController.normalizedVersion("1.0.4") == "1.0.4",
-              AutomaticUpdateController.isVersion("1.0.10", newerThan: "1.0.9"),
-              !AutomaticUpdateController.isVersion("1.0.4", newerThan: "1.0.4"),
-              !AutomaticUpdateController.isVersion("1.0.3", newerThan: "1.0.4") else {
+        guard RuntimeController.versionParts("1.0.4") == [1,0,4],
+              RuntimeController.versionParts("1.0.4-beta") == nil,
+              RuntimeController.newer("1.0.10", than: "1.0.9"),
+              !RuntimeController.newer("1.0.4", than: "1.0.4"),
+              !RuntimeController.newer("1.0.3", than: "1.0.4") else {
             throw AppError.message("Automatic update version comparison failed.")
         }
+
+        try testRuntimeBoundary()
 
         try testBSPTreeResolution()
         try testBSPCoordinateConversion()
@@ -58,6 +60,49 @@ enum SelfTests {
         }
 
         try testLocalGitSynchronization(in: directory)
+    }
+
+    private static func testRuntimeBoundary() throws {
+        let package = try RuntimeController.shared.package()
+        let data = try JSONEncoder().encode(package)
+        var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        object["api"] = 999
+        do {
+            _ = try RuntimeController.decode(JSONSerialization.data(withJSONObject: object))
+            throw AppError.message("Wrong runtime API was accepted.")
+        } catch {
+            guard error.localizedDescription.contains("different host API") else { throw error }
+        }
+        object["api"] = 1
+        object["menu"] = [["title": "Bad", "action": "runShell", "section": "files"]]
+        do {
+            _ = try RuntimeController.decode(JSONSerialization.data(withJSONObject: object))
+            throw AppError.message("Arbitrary runtime selector was accepted.")
+        } catch {
+            guard error.localizedDescription.contains("unsupported menu action") else { throw error }
+        }
+        let name = "Yabai-Menu-Runtime-1.1.0.json"
+        guard AutomaticUpdateController.trustedURL(
+            URL(string: "https://github.com/MarosZofcin/yabai-menu/releases/download/runtime-v1.1.0/\(name)")!,
+            tag: "runtime-v1.1.0", filename: name),
+              !AutomaticUpdateController.trustedURL(URL(string: "https://evil.example/\(name)")!,
+                tag: "runtime-v1.1.0", filename: name) else {
+            throw AppError.message("Runtime download URL validation failed.")
+        }
+        let probe = RuntimePackage(api: 1, version: "1.1.0", settings: package.settings, menu: [],
+            script: "function dispatch() { return {fs:typeof require,native:typeof ObjC,process:typeof process}; }")
+        guard let result = try RuntimeController.evaluate(package: probe, method: "probe", input: [:]) as? [String: String],
+              result.values.allSatisfy({ $0 == "undefined" }) else {
+            throw AppError.message("Unexpected native capability in runtime worker.")
+        }
+        let loop = RuntimePackage(api: 1, version: "1.1.0", settings: package.settings, menu: [],
+            script: "function dispatch() { while(true) {} }")
+        do {
+            _ = try RuntimeController.evaluate(package: loop, method: "probe", input: [:])
+            throw AppError.message("Runtime watchdog failed.")
+        } catch {
+            guard error.localizedDescription.contains("timed out") else { throw error }
+        }
     }
 
     private static func testBSPTreeResolution() throws {
