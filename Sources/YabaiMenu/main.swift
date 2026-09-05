@@ -26,5 +26,7 @@ MainActor.assumeIsolated {
     let application = NSApplication.shared
     let delegate = AppDelegate()
     application.delegate = delegate
+    SystemServiceController.shared.start()
     application.run()
+    SystemServiceController.shared.stop()
 }
