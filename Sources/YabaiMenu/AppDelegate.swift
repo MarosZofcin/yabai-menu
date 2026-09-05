@@ -447,10 +447,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func reloadYabai() {
-        runYabaiOperation(label: "Reloading yabai…") { [yabai, floatingApps] in
-            try yabai.reload()
-            try yabai.applyBlacklistWhenReady(floatingApps)
-            return "yabai reloaded"
+        guard !operationInProgress else { return }
+        operationInProgress = true
+        operationStatus = "Saving yabairc and reloading yabai…"
+        gitHubState = .syncing
+        rebuildMenu()
+
+        let gitSync = self.gitSync
+        let store = self.store
+        let yabai = self.yabai
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let report = try gitSync.sync()
+                let apps = try store.load()
+                try yabai.reload()
+                try yabai.applyBlacklistWhenReady(apps)
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.floatingApps = apps
+                    self.finishSuccessfulSync(
+                        report,
+                        message: "yabairc saved, synchronized, and yabai reloaded"
+                    )
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self?.finishFailedOperation(error)
+                }
+            }
         }
     }
 
