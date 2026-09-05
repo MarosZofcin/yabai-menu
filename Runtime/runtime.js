@@ -93,15 +93,97 @@ function bspBranches(input) {
     return paths[0];
 }
 
+const trackingParameters = new Set([
+    "fbclid", "gclid", "dclid", "msclkid", "yclid", "ttclid", "twclid",
+    "igshid", "li_fat_id", "mc_cid", "mc_eid", "mkt_tok", "vero_conv",
+    "vero_id", "oly_anon_id", "oly_enc_id", "rb_clickid", "s_cid", "_hsenc", "_hsmi"
+]);
+
+function isTrackingParameter(rawKey) {
+    let key = rawKey.replace(/\+/g, " ");
+    try { key = decodeURIComponent(key); } catch (_) {}
+    key = key.toLowerCase();
+    return key.startsWith("utm_") || trackingParameters.has(key);
+}
+
+function stripTrackingFromURL(value) {
+    const question = value.indexOf("?");
+    if (question < 0) return value;
+    const hash = value.indexOf("#", question);
+    const base = value.slice(0, question);
+    const query = value.slice(question + 1, hash < 0 ? value.length : hash);
+    const fragment = hash < 0 ? "" : value.slice(hash);
+    const kept = query.split("&").filter(part => part && !isTrackingParameter(part.split("=", 1)[0]));
+    return base + (kept.length ? "?" + kept.join("&") : "") + fragment;
+}
+
+function cleanTrackingURLs(text) {
+    return text.replace(/https?:\/\/[^\s<>"']+/g, match => {
+        // Keep common sentence/Markdown punctuation outside the URL.
+        let url = match, suffix = "";
+        while (/[),.;!?]$/.test(url)) {
+            suffix = url.slice(-1) + suffix;
+            url = url.slice(0, -1);
+        }
+        return stripTrackingFromURL(url) + suffix;
+    });
+}
+
+function cleanCopiedText(text) {
+    let result = text;
+    // Some Aktuality/Živé pages append an attribution footer to copied text.
+    // Restrict this rule to their own URL so legitimate prose is not removed.
+    result = result.replace(
+        /\n{2,}Čítajte viac:\s*https?:\/\/(?:www\.)?zive\.aktuality\.sk\/[^\s]+(?:\s*\n_*\s*)?$/iu,
+        ""
+    );
+    result = cleanTrackingURLs(result);
+    return result;
+}
+
+function systemEvent(input) {
+    if (!input || typeof input.kind !== "string" || typeof input.payload !== "object") {
+        throw new Error("Invalid system event");
+    }
+    const operations = [];
+    switch (input.kind) {
+    case "clipboard.text.changed": {
+        const text = input.payload.text;
+        if (typeof text !== "string") throw new Error("Invalid clipboard text");
+        const cleaned = cleanCopiedText(text);
+        if (cleaned !== text) operations.push({kind:"clipboard.replaceText", text:cleaned});
+        break;
+    }
+    // These events are intentionally exposed now so future runtime releases can
+    // make pure decisions about them without another host rebuild. No native
+    // operation is performed unless it is in the host's explicit allowlist.
+    case "host.started":
+    case "workspace.application.activated":
+    case "workspace.didWake":
+    case "workspace.willSleep":
+    case "display.configuration.changed":
+        break;
+    default:
+        break;
+    }
+    return {operations};
+}
+
 function dispatch(method,input) {
     switch(method) {
     case "gitPlan": return gitPlan(input);
     case "syncMessage": return syncMessage(input);
     case "bspBranches": return bspBranches(input);
-    case "selfTest":
+    case "systemEvent": return systemEvent(input);
+    case "selfTest": {
         if (gitPlan({ahead:1,behind:1}).integration !== "rebase") throw new Error("Git plan test");
         if (gitPlan({ahead:0,behind:1}).integration !== "fastForward") throw new Error("Git plan test");
+        const tracked = "https://example.com/a?id=7&utm_source=x&fbclid=y#part";
+        if (cleanCopiedText(tracked) !== "https://example.com/a?id=7#part") throw new Error("Tracking cleanup test");
+        const injected = "Martin Senčák riaditeľ\n\nČítajte viac: https://zive.aktuality.sk/clanok/SW87rQh/tieto-zariadenia/?utm_source=x\n___";
+        if (cleanCopiedText(injected) !== "Martin Senčák riaditeľ") throw new Error("Copy footer cleanup test");
         return {ok:true};
+    }
     default: throw new Error("Unknown runtime method");
     }
 }
