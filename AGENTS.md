@@ -39,6 +39,15 @@ Do not migrate user layout/margins into release defaults or overwrite dotfiles.
 `~/dotfiles/yabai/yabairc` remains the canonical user configuration. Only that
 file may be auto-committed, with syntax validation and unrelated-change checks.
 
+## Release list presentation
+
+Use short version-first release titles: `X.Y.Z · Aplikácia` for host ZIP releases
+and `X.Y.Z · Runtime` for runtime releases. Keep tags and asset filenames stable:
+the updater depends on them. GitHub Latest belongs to the current host.
+The release workflow maintains these titles. Its one-time draft cleanup is
+restricted to owner-approved IDs 374946008 and 374946963; do not generalize
+it to deleting other drafts or tags.
+
 ## Honesty and verification
 
 Current runtime extraction is substantial but not total: BSP reconstruction,

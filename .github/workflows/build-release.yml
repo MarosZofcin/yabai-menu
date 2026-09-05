@@ -105,15 +105,40 @@ jobs:
             gh release create "v$HOST_VERSION" "release/Yabai-Menu-$HOST_VERSION.zip" \
               "release/Yabai-Menu-Runtime-$RUNTIME_VERSION.json" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
-              --title "Yabai Menu $HOST_VERSION — stable host bootstrap" \
+              --title "$HOST_VERSION · Aplikácia" \
               --notes "Install this host manually once. It never replaces its own app bundle. Runtime updates use separate runtime-v tags. macOS permissions must be granted after this bootstrap; their retention across runtime updates still requires an on-device test."
           fi
           if ! gh release view "runtime-v$RUNTIME_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "runtime-v$RUNTIME_VERSION" "release/Yabai-Menu-Runtime-$RUNTIME_VERSION.json" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
-              --title "Yabai Menu runtime $RUNTIME_VERSION (Host API 1)" \
+              --title "$RUNTIME_VERSION · Runtime" \
               --notes "Runtime-only data/code update for Host API 1. Does not replace or re-sign Yabai Menu.app. See docs/ARCHITECTURE.md and AGENTS.md before contributing."
           fi
+          # Normalize display names; tags, published assets and dates stay intact.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | [.id, .draft, .tag_name, .name] | @tsv' \
+            > "$RUNNER_TEMP/yabai-menu-releases.tsv"
+          while IFS=$'\t' read -r release_id is_draft release_tag old_title; do
+            # Owner-approved cleanup of exactly two abandoned v1.0.0 drafts.
+            # Delete by release ID, never by their tag shared with the real release.
+            if [[ "$release_id" = 374946008 || "$release_id" = 374946963 ]]; then
+              [[ "$is_draft" = true && "$release_tag" = v1.0.0 ]]
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+              continue
+            fi
+            [[ "$is_draft" = false ]] || continue
+            if [[ "$release_tag" =~ ^runtime-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              title="${BASH_REMATCH[1]} · Runtime"
+            elif [[ "$release_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              title="${BASH_REMATCH[1]} · Aplikácia"
+            else
+              continue
+            fi
+            if [[ "$old_title" != "$title" ]]; then
+              gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+                -f name="$title" -f make_latest=false --silent
+            fi
+          done < "$RUNNER_TEMP/yabai-menu-releases.tsv"
           # Keep GitHub's download recommendation on the installable host,
           # never on a runtime-only JSON release. This only changes metadata.
           gh release edit "v$HOST_VERSION" --repo "$GITHUB_REPOSITORY" --latest
