@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var store = YabaircBlacklistStore(fileURL: yabaircURL)
     private lazy var gitSync = GitSyncController(repositoryURL: repositoryURL, managedFileURL: yabaircURL)
     private let diagnostics = DiagnosticLogger.shared
+    private let automaticUpdater = AutomaticUpdateController()
     private lazy var yabai = YabaiController(diagnostics: diagnostics)
     private lazy var branchHighlight = BranchHighlightController(
         yabai: yabai,
@@ -22,12 +23,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var statusTimer: Timer?
     private var hourlySyncTimer: Timer?
+    private var automaticUpdateTimer: Timer?
     private var snapshot = YabaiSnapshot(isRunning: false, displays: [])
     private var floatingApps: [FloatingApp] = []
     private var currentApp: RunningApplication?
     private var branchHighlightStatus = "BSP highlight: Starting…"
     private var operationStatus: String?
     private var operationInProgress = false
+    private var updateCheckInProgress = false
+    private var updateMenuTitle = "Check for Updates"
     private var gitHubState = GitHubSyncState.unknown
     private var lastSuccessfulSync: Date? {
         didSet { UserDefaults.standard.set(lastSuccessfulSync, forKey: "lastSuccessfulGitHubSync") }
@@ -75,15 +79,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hourlySyncTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.performGitSync(reason: "Hourly sync") }
         }
+        automaticUpdateTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkForUpdates(silent: true) }
+        }
 
         DispatchQueue.main.async { [weak self] in
             self?.performGitSync(reason: "Startup sync")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            self?.checkForUpdates(silent: true)
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         statusTimer?.invalidate()
         hourlySyncTimer?.invalidate()
+        automaticUpdateTimer?.invalidate()
         branchHighlight.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
@@ -101,6 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func systemDidWake(_ notification: Notification) {
         performGitSync(reason: "Wake sync")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            self?.checkForUpdates(silent: true)
+        }
     }
 
     private func captureCurrentApplication(_ app: NSRunningApplication?) {
@@ -214,6 +228,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        let updateItem = actionItem(updateMenuTitle, #selector(checkForUpdatesNow))
+        updateItem.isEnabled = !operationInProgress && !updateCheckInProgress
+        menu.addItem(updateItem)
         menu.addItem(disabledItem(Self.versionTitle))
         menu.addItem(actionItem("Quit Yabai Menu", #selector(quitApp), key: "q"))
         statusItem.menu = menu
@@ -530,6 +547,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSSound.beep()
         }
         rebuildMenu()
+    }
+
+    @objc private func checkForUpdatesNow() {
+        checkForUpdates(silent: false)
+    }
+
+    private func checkForUpdates(silent: Bool) {
+        guard !updateCheckInProgress else { return }
+        guard !operationInProgress else {
+            if silent {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+                    self?.checkForUpdates(silent: true)
+                }
+            }
+            return
+        }
+
+        updateCheckInProgress = true
+        updateMenuTitle = "Checking for Updates…"
+        rebuildMenu()
+
+        automaticUpdater.checkAndInstall { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.updateCheckInProgress = false
+
+                switch result {
+                case .success(.upToDate):
+                    self.updateMenuTitle = "Check for Updates (Up to Date)"
+                    self.diagnostics.log("automatic_update_up_to_date")
+                    self.rebuildMenu()
+                case .success(.installationStarted(let version)):
+                    self.updateMenuTitle = "Installing Yabai Menu \(version)…"
+                    self.diagnostics.log("automatic_update_installing", ["version": version])
+                    self.rebuildMenu()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NSApp.terminate(nil)
+                    }
+                case .failure(let error):
+                    self.updateMenuTitle = "Check for Updates (Last Check Failed)"
+                    self.diagnostics.log("automatic_update_failed", ["error": error.localizedDescription])
+                    if !silent {
+                        self.operationStatus = "Update failed: \(error.localizedDescription)"
+                        NSSound.beep()
+                    }
+                    self.rebuildMenu()
+                }
+            }
+        }
     }
 
     @objc private func quitApp() {
