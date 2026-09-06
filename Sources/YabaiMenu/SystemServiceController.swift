@@ -28,7 +28,6 @@ final class SystemServiceController {
     private var appObservers: [NSObjectProtocol] = []
     private var menuObserver: NSObjectProtocol?
     private var runtimePreferences: [RuntimePreference] = []
-    private var preferenceRefreshInProgress = false
     private var started = false
 
     private init() {}
@@ -94,8 +93,10 @@ final class SystemServiceController {
         ) { [weak self] notification in
             Task { @MainActor in
                 guard let self, let menu = notification.object as? NSMenu else { return }
+                // Re-read declarations on every open so a runtime-only update may
+                // add/remove safe preference toggles without restarting the host.
+                self.runtimePreferences = self.loadRuntimePreferences()
                 self.injectRuntimePreferences(into: menu)
-                self.refreshRuntimePreferencesForNextOpen()
             }
         }
 
@@ -192,8 +193,6 @@ final class SystemServiceController {
             case "state.remove":
                 applyStateRemove(operation)
             default:
-                // Unknown runtime operations are intentionally ignored. Adding a
-                // new native authority always requires an explicit host change.
                 continue
             }
         }
@@ -210,13 +209,11 @@ final class SystemServiceController {
               text.utf8.count <= Self.maximumTextBytes else { return }
 
         let pasteboard = NSPasteboard.general
-        // Never overwrite a newer user copy while the runtime worker was busy.
         guard pasteboard.changeCount == expectedPasteboardChangeCount else { return }
         guard pasteboard.string(forType: .string) != text else { return }
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        // Our own write changes changeCount. Record it immediately to avoid a loop.
         lastPasteboardChangeCount = pasteboard.changeCount
     }
 
@@ -243,48 +240,11 @@ final class SystemServiceController {
         return output
     }
 
-    private func refreshRuntimePreferencesForNextOpen() {
-        guard !preferenceRefreshInProgress else { return }
-        preferenceRefreshInProgress = true
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self else { return }
-            let preferences = self.loadRuntimePreferencesOffMainThread()
-            DispatchQueue.main.async {
-                self.runtimePreferences = preferences
-                self.preferenceRefreshInProgress = false
-            }
-        }
-    }
-
-    nonisolated private func loadRuntimePreferencesOffMainThread() -> [RuntimePreference] {
-        guard let result = try? RuntimeController.shared.call("preferences", input: [:]),
-              let rawPreferences = result as? [Any],
-              rawPreferences.count <= Self.maximumPreferences else { return [] }
-
-        var output: [RuntimePreference] = []
-        var keys = Set<String>()
-        for raw in rawPreferences {
-            guard let object = raw as? [String: Any],
-                  let title = object["title"] as? String,
-                  let key = object["key"] as? String,
-                  let defaultValue = object["defaultValue"] as? Bool,
-                  !title.isEmpty, title.count <= 100,
-                  Self.validStateKey(key),
-                  !keys.contains(key) else { return [] }
-            keys.insert(key)
-            output.append(RuntimePreference(title: title, key: key, defaultValue: defaultValue))
-        }
-        return output
-    }
-
     private func injectRuntimePreferences(into menu: NSMenu) {
         guard !runtimePreferences.isEmpty,
               menu.items.contains(where: { $0.title == "Quit Yabai Menu" }),
               let updaterIndex = menu.items.firstIndex(where: { $0.title == "Automatically Update Runtime" }) else { return }
 
-        // AppDelegate rebuilds a fresh menu before each open. This extra guard
-        // makes the injection idempotent if AppKit sends more than one tracking
-        // notification for the same menu instance.
         guard !menu.items.contains(where: { ($0.representedObject as? String)?.hasPrefix("runtime.preference:") == true }) else { return }
 
         var insertionIndex = updaterIndex
@@ -314,8 +274,7 @@ final class SystemServiceController {
     }
 
     private func boolState(for key: String, defaultValue: Bool) -> Bool {
-        let state = runtimeState()
-        return state[key] as? Bool ?? defaultValue
+        runtimeState()[key] as? Bool ?? defaultValue
     }
 
     private func runtimeState() -> [String: Any] {
