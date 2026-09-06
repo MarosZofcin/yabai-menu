@@ -41,7 +41,6 @@ function bspBranches(input) {
     });
     if (!leaves.some(l => l.ids.includes(input.target))) fail("targetNotTiled");
     if (leaves.length <= 1) fail("noParentBranch");
-    // Explicit resource bounds. The host worker also has a wall-clock limit.
     if (leaves.length > 64) fail("ambiguousHierarchy");
     const union = (a,b) => ({x:Math.min(a.x,b.x), y:Math.min(a.y,b.y),
         w:Math.max(a.x+a.w,b.x+b.w)-Math.min(a.x,b.x),
@@ -119,7 +118,6 @@ function stripTrackingFromURL(value) {
 
 function cleanTrackingURLs(text) {
     return text.replace(/https?:\/\/[^\s<>"']+/g, match => {
-        // Keep common sentence/Markdown punctuation outside the URL.
         let url = match, suffix = "";
         while (/[),.;!?]$/.test(url)) {
             suffix = url.slice(-1) + suffix;
@@ -131,14 +129,18 @@ function cleanTrackingURLs(text) {
 
 function cleanCopiedText(text) {
     let result = text;
-    // Some Aktuality/Živé pages append an attribution footer to copied text.
-    // Restrict this rule to their own URL so legitimate prose is not removed.
     result = result.replace(
         /\n{2,}Čítajte viac:\s*https?:\/\/(?:www\.)?zive\.aktuality\.sk\/[^\s]+(?:\s*\n_*\s*)?$/iu,
         ""
     );
     result = cleanTrackingURLs(result);
     return result;
+}
+
+function preferenceEnabled(input, key, defaultValue) {
+    if (!input || !input.state || typeof input.state !== "object") return defaultValue;
+    const value = input.state[key];
+    return typeof value === "boolean" ? value : defaultValue;
 }
 
 function systemEvent(input) {
@@ -148,15 +150,13 @@ function systemEvent(input) {
     const operations = [];
     switch (input.kind) {
     case "clipboard.text.changed": {
+        if (!preferenceEnabled(input, "runtime.clipboardCleaner.enabled", true)) break;
         const text = input.payload.text;
         if (typeof text !== "string") throw new Error("Invalid clipboard text");
         const cleaned = cleanCopiedText(text);
         if (cleaned !== text) operations.push({kind:"clipboard.replaceText", text:cleaned});
         break;
     }
-    // These events are intentionally exposed now so future runtime releases can
-    // make pure decisions about them without another host rebuild. No native
-    // operation is performed unless it is in the host's explicit allowlist.
     case "host.started":
     case "workspace.application.activated":
     case "workspace.didWake":
@@ -180,6 +180,10 @@ function dispatch(method,input) {
         if (gitPlan({ahead:0,behind:1}).integration !== "fastForward") throw new Error("Git plan test");
         const tracked = "https://example.com/a?id=7&utm_source=x&fbclid=y#part";
         if (cleanCopiedText(tracked) !== "https://example.com/a?id=7#part") throw new Error("Tracking cleanup test");
+        const enabled = systemEvent({kind:"clipboard.text.changed", payload:{text:tracked}, state:{}});
+        if (enabled.operations.length !== 1) throw new Error("Clipboard preference default test");
+        const disabled = systemEvent({kind:"clipboard.text.changed", payload:{text:tracked}, state:{"runtime.clipboardCleaner.enabled":false}});
+        if (disabled.operations.length !== 0) throw new Error("Clipboard preference disabled test");
         const injected = "Martin Senčák riaditeľ\n\nČítajte viac: https://zive.aktuality.sk/clanok/SW87rQh/tieto-zariadenia/?utm_source=x\n___";
         if (cleanCopiedText(injected) !== "Martin Senčák riaditeľ") throw new Error("Copy footer cleanup test");
         return {ok:true};
