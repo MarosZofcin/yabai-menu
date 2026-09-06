@@ -145,6 +145,20 @@ the runtime to return no clipboard replacement operation at all.
 The cleanup rules still live entirely in `Runtime/runtime.js`, so they can be
 refined later by runtime-only updates without another host replacement.
 
+## On-device verification status
+
+On **2026-09-06**, Host/Runtime **1.2.1** was manually installed and tested on a
+real Mac by the project owner. The **Automatic Clipboard Cleaner** preference is
+visible in the Yabai Menu menu and automatic clipboard cleanup works in normal
+copy/paste use. This closes the feature-level real-device verification item that
+CI cannot establish.
+
+This verification confirms the menu preference surface and clipboard-cleaning
+path in real use. It does **not** by itself prove every residual item in the
+release checklist (for example long-term TCC retention, every Maccy race case,
+second-Mac behavior, or a later runtime-only update preserving CDHash); those
+remain separate checks and must not be inferred from this result.
+
 ## Update and recovery
 
 Checks run after launch/wake (15s defaults), every 6h, and via the menu. They read
@@ -198,7 +212,9 @@ runtime-only behavior of host 1.1.0 and later.
 7. On a real Mac: approve the new host if macOS asks; verify AX/Input Monitoring,
    BSP hover/drag, **Automatic Clipboard Cleaner** menu toggle in both states,
    Maccy coexistence, and that a subsequent runtime-only update leaves the host
-   CDHash unchanged.
+   CDHash unchanged. As of 2026-09-06, the Clipboard Cleaner toggle and active
+   cleaning path are confirmed working on-device; the remaining subchecks are
+   still tracked separately.
 8. Test rollback, restart, offline wake, failed download and the second Mac.
 
 Never promise this is the last host update forever. Fixes to the native trust
