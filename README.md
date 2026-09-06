@@ -4,7 +4,7 @@ Native macOS menu-bar controller for yabai with BSP visualization, drag-and-warp
 
 ## Highlights
 
-- **Automatic Clipboard Cleaner** — when enabled, copied text is cleaned automatically before paste. It removes the trailing `Čítajte viac:` attribution injected by Živé/Aktuality and strips known URL tracking parameters such as `utm_*`, `fbclid`, `gclid`, `msclkid`, `ttclid` and related identifiers while preserving functional query parameters. It can be turned on or off directly in the Yabai Menu menu.
+- **Automatic Clipboard Cleaner** — when enabled, copied text is cleaned automatically before paste. It removes injected copy-attribution footers and strips known URL tracking parameters such as `utm_*`, `fbclid`, `gclid`, `msclkid`, `ttclid` and related identifiers while preserving functional query parameters. It can be turned on or off directly in the Yabai Menu menu.
 - **BSP branch inspection** — hold Control + Shift and hover a tiled window to highlight its parent BSP branch without changing the layout.
 - **Visual drag-and-warp** — hold Control + Option and drag a tiled window toward a target edge to move it within the BSP tree.
 - **Balance current Space** and undo the last supported warp.
@@ -18,7 +18,7 @@ Clipboard cleaning requires no extra keyboard shortcut. In **Yabai Menu 1.2.1+**
 
 Current behavior:
 
-- removes Živé/Aktuality copy-injection footers beginning with `Čítajte viac:` when they point back to `zive.aktuality.sk`;
+- removes supported copy-injection or attribution footers appended to copied text;
 - removes known tracking parameters from copied URLs, including `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `ttclid`, `twclid`, `igshid`, `mc_cid`, `mc_eid` and related identifiers;
 - preserves query parameters that are not recognized as tracking;
 - leaves non-text clipboard content untouched;
