@@ -133,9 +133,9 @@ protects availability; it is not a memory quota or a formal security proof.
 ## Clipboard policy in Runtime 1.2.1
 
 Automatic clipboard cleaning remains the first System Services consumer. Runtime
-1.2.1 removes a trailing `Čítajte viac:` attribution injected by Živé/Aktuality
-only when it points to `zive.aktuality.sk`, and strips known tracking query
-parameters from copied HTTP/HTTPS URLs. Functional query parameters are kept.
+1.2.1 removes supported copy-injection or attribution footers using conservative
+matching rules and strips known tracking query parameters from copied HTTP/HTTPS
+URLs. Functional query parameters are kept.
 
 The policy is enabled by default but now checks the persistent
 `runtime.clipboardCleaner.enabled` boolean state. Host 1.2.1 renders that runtime
@@ -207,7 +207,7 @@ runtime-only behavior of host 1.1.0 and later.
 4. Retest BSP fixtures, stacked leaves, minimum-width overlap, no-parent and
    ambiguous trees; Git autocommit/push with isolated local repositories.
 5. Runtime self-test must cover System Services policy such as tracking cleanup,
-   publisher-copy-footer removal, preference declaration shape and disabled state.
+   copy-footer removal, preference declaration shape and disabled state.
 6. Test corrupt payload, wrong API, invalid version, untrusted URL and timeout.
 7. On a real Mac: approve the new host if macOS asks; verify AX/Input Monitoring,
    BSP hover/drag, **Automatic Clipboard Cleaner** menu toggle in both states,
