@@ -6,24 +6,22 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Host 1.2.0 / Runtime 1.2.0] - 2026-09-05
 
-- Add Host API 2 with a reusable **System Services** bridge instead of a
-  clipboard-specific native shortcut. The host emits bounded JSON events and
-  executes only explicit allowlisted operations returned by the runtime.
-- Expose text clipboard changes, application activation, sleep/wake, display
-  configuration changes and host startup as system events that future runtime
-  releases can react to without rebuilding the app.
-- Add namespaced small persistent runtime state through UserDefaults. The bridge
-  still exposes no arbitrary AppKit/Objective-C callbacks, filesystem access,
-  shell, generic process execution or network API to downloaded runtime code.
-- Add automatic clipboard cleaning as the first System Services policy. Remove
-  known tracking parameters such as `utm_*`, `fbclid`, `gclid`, `msclkid`,
-  `ttclid` and related identifiers while preserving functional query parameters.
-- Remove the `Čítajte viac:` copy-injection footer from Živé/Aktuality copied
-  text, restricted to that site's URL so ordinary prose is not stripped.
-- Protect clipboard races: a runtime response may replace text only if the
-  pasteboard has not changed since the corresponding event was emitted.
-- Host API 2 accepts older API 1 runtimes for rollback/backward compatibility;
-  API 2 runtimes are rejected by Host 1.1.0, preventing false compatibility.
+### Added
+
+- **Automatic Clipboard Cleaner.** Yabai Menu now watches copied text in the background and cleans it automatically before paste; no extra keyboard shortcut is required.
+- Remove the trailing `Čítajte viac:` attribution that Živé/Aktuality pages append to copied text, restricted to links pointing back to `zive.aktuality.sk` so ordinary prose is not stripped.
+- Remove known tracking parameters from URLs, including `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `ttclid`, `twclid`, `igshid`, `mc_cid`, `mc_eid` and related identifiers while preserving functional query parameters.
+- Leave non-text clipboard content untouched and protect against clipboard races so a delayed runtime result cannot overwrite a newer copy.
+- Add Host API 2 with a reusable **System Services** bridge instead of a clipboard-specific native shortcut. The host emits bounded JSON events and executes only explicit allowlisted operations returned by the runtime.
+- Expose text clipboard changes, application activation, sleep/wake, display configuration changes and host startup as system events that future runtime releases can react to without rebuilding the app.
+- Add namespaced small persistent runtime state through UserDefaults.
+
+### Architecture
+
+- Clipboard cleaning is runtime policy on top of Host API 2, so future cleanup rules can normally ship as runtime-only updates.
+- System Services is deliberately a broader capability category for future features, increasing the chance that new behavior can be added without another full host replacement.
+- The bridge still exposes no arbitrary AppKit/Objective-C callbacks, filesystem access, shell, generic process execution or unrestricted network API to downloaded runtime code.
+- Host API 2 accepts older API 1 runtimes for rollback/backward compatibility; API 2 runtimes are rejected by Host 1.1.0, preventing false compatibility.
 
 ## [Runtime 1.1.1 — unchanged Host 1.1.0] - 2026-09-05
 
