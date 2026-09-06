@@ -1,12 +1,19 @@
 {
   "api": 2,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "settings": {
     "statusInterval": 3,
     "syncInterval": 3600,
     "updateInterval": 21600,
     "wakeDelay": 15
   },
+  "preferences": [
+    {
+      "title": "Automatic Clipboard Cleaner",
+      "key": "runtime.clipboardCleaner.enabled",
+      "defaultValue": true
+    }
+  ],
   "menu": [
     {"title":"Test BSP Highlight in 3 Seconds","action":"testBSPHighlight","section":"tools"},
     {"title":"Balance Current Space","action":"balanceCurrentSpace","section":"tools"},
