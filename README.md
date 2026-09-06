@@ -24,6 +24,8 @@ Current behavior:
 - leaves non-text clipboard content untouched;
 - checks that the clipboard has not changed again before writing a cleaned result, so a delayed cleanup cannot overwrite a newer copy.
 
+**On-device verification:** Host/Runtime 1.2.1 was manually installed and tested on a real Mac on 2026-09-06. The **Automatic Clipboard Cleaner** menu toggle is visible and the automatic clipboard cleaning works in normal use. This confirms the feature beyond CI/build-level verification.
+
 Clipboard cleanup is runtime policy implemented on top of Host API 2. Future cleanup rules can normally be added through a runtime-only update.
 
 ## Runtime-defined preferences
