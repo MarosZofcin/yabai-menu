@@ -17,6 +17,10 @@ All notable changes to Yabai Menu are documented in this file.
 
 - Fix Host 1.2.0 shipping the Clipboard Cleaner permanently enabled with no user-facing way to disable it.
 
+### Verified
+
+- On 2026-09-06, Host/Runtime 1.2.1 was manually installed and tested on a real Mac. The **Automatic Clipboard Cleaner** menu toggle is visible and automatic clipboard cleanup works in normal copy/paste use. This is explicit on-device confirmation beyond CI/self-test coverage.
+
 ### Architecture
 
 - Keep preference declarations strictly declarative: short title, validated namespaced key and boolean default only. They do not expose arbitrary selectors, AppKit objects, native callbacks, shell, filesystem or process execution.
@@ -134,6 +138,11 @@ All notable changes to Yabai Menu are documented in this file.
 - Clip overlay geometry to its display when a minimum-sized window extends
   beyond the usable BSP region.
 
+### Documentation
+
+- Add launch diagnostics for invalid signatures and missing executable permissions.
+- Clarify the versioned release asset name and the executable name inside the bundle.
+
 ## [1.0.1] - 2026-08-24
 
 ### Fixed
@@ -142,11 +151,6 @@ All notable changes to Yabai Menu are documented in this file.
 - Exclude Finder information, resource forks, quarantine metadata, and ACLs from the downloadable ZIP.
 - Preserve and verify the executable permission on `Contents/MacOS/YabaiMenu` so LaunchServices can start the app after transfer to another Mac.
 - Verify the extracted distribution archive, not only the original local app bundle.
-
-### Documentation
-
-- Add launch diagnostics for invalid signatures and missing executable permissions.
-- Clarify the versioned release asset name and the executable name inside the bundle.
 
 ## [1.0.0] - 2026-08-22
 
@@ -158,7 +162,9 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
-[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.1
+[1.2.0]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.0
 [1.0.3]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.0...v1.0.1
