@@ -10,7 +10,7 @@ The menu item **Automatic Clipboard Cleaner** is enabled by default. Click it to
 
 Current cleanup rules:
 
-- Remove the trailing `Čítajte viac:` attribution that Živé/Aktuality pages append to copied text.
+- Remove supported copy-injection or attribution footers appended to copied text.
 - Remove known tracking parameters from URLs, including `utm_*`, `fbclid`, `gclid`, `msclkid`, `ttclid` and related identifiers.
 - Preserve functional query parameters that are not recognized as tracking.
 - Leave non-text clipboard content alone.
