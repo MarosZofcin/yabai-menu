@@ -16,6 +16,10 @@ Current cleanup rules:
 - Leave non-text clipboard content alone.
 - Protect against races so a delayed cleanup result cannot overwrite a newer copy.
 
+### Verified behavior
+
+Host/Runtime **1.2.1** was manually installed and exercised on a real Mac on **2026-09-06**. The **Automatic Clipboard Cleaner** toggle is visible in the menu and the automatic cleanup works in normal copy/paste use. Treat this as on-device confirmation in addition to CI and self-tests.
+
 The clipboard cleaner is implemented as runtime policy on top of Host API 2. Future cleanup rules can therefore usually be delivered as runtime-only updates without replacing the app.
 
 ## Runtime-defined menu preferences
