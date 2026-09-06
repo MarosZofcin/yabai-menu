@@ -4,7 +4,7 @@ Native macOS menu-bar controller for yabai with BSP visualization, drag-and-warp
 
 ## Highlights
 
-- **Automatic Clipboard Cleaner** — when you copy text, Yabai Menu can clean it automatically before paste. It removes the trailing `Čítajte viac:` attribution injected by Živé/Aktuality and strips known URL tracking parameters such as `utm_*`, `fbclid`, `gclid`, `msclkid`, `ttclid` and related identifiers while preserving functional query parameters.
+- **Automatic Clipboard Cleaner** — when enabled, copied text is cleaned automatically before paste. It removes the trailing `Čítajte viac:` attribution injected by Živé/Aktuality and strips known URL tracking parameters such as `utm_*`, `fbclid`, `gclid`, `msclkid`, `ttclid` and related identifiers while preserving functional query parameters. It can be turned on or off directly in the Yabai Menu menu.
 - **BSP branch inspection** — hold Control + Shift and hover a tiled window to highlight its parent BSP branch without changing the layout.
 - **Visual drag-and-warp** — hold Control + Option and drag a tiled window toward a target edge to move it within the BSP tree.
 - **Balance current Space** and undo the last supported warp.
@@ -14,7 +14,7 @@ Native macOS menu-bar controller for yabai with BSP visualization, drag-and-warp
 
 ## Clipboard Cleaner
 
-Clipboard cleaning is automatic; there is no extra keyboard shortcut to press.
+Clipboard cleaning requires no extra keyboard shortcut. In **Yabai Menu 1.2.1+**, the menu contains a checked **Automatic Clipboard Cleaner** item. Click it to turn automatic cleaning on or off. The default is **On**, and the preference persists across launches and runtime updates.
 
 Current behavior:
 
@@ -24,11 +24,19 @@ Current behavior:
 - leaves non-text clipboard content untouched;
 - checks that the clipboard has not changed again before writing a cleaned result, so a delayed cleanup cannot overwrite a newer copy.
 
-Clipboard cleanup is runtime policy implemented on top of Host API 2. That means future cleanup rules can normally be added through a runtime-only update.
+Clipboard cleanup is runtime policy implemented on top of Host API 2. Future cleanup rules can normally be added through a runtime-only update.
+
+## Runtime-defined preferences
+
+Host 1.2.1 extends System Services with a bounded **runtime-defined boolean preference** mechanism. A runtime can declare a small, validated list of namespaced on/off settings; the host renders them as checked menu items and stores their values in the existing System Services state store.
+
+This is deliberately generic rather than Clipboard-Cleaner-specific. Future runtime features that only need an on/off preference can add their own menu toggle without another host rebuild.
+
+Preference declarations are restricted to short titles, boolean defaults and validated `runtime.*` keys. They do not provide arbitrary menu selectors, AppKit access, shell commands or native callbacks.
 
 ## System Services / Host API 2
 
-Yabai Menu 1.2.0 introduces a reusable **System Services** boundary between native macOS APIs and the replaceable runtime. It is intentionally broader than a one-off clipboard hook so future features have a better chance of shipping without another full app replacement.
+Yabai Menu 1.2.0 introduced a reusable **System Services** boundary between native macOS APIs and the replaceable runtime. It is intentionally broader than a one-off clipboard hook so future features have a better chance of shipping without another full app replacement.
 
 The host can emit bounded JSON system events including:
 
@@ -38,7 +46,7 @@ The host can emit bounded JSON system events including:
 - sleep/wake events;
 - display-configuration changes.
 
-The runtime can respond only with explicitly allowlisted operations. Today those include guarded clipboard text replacement and small namespaced persistent runtime-state changes.
+The runtime can respond only with explicitly allowlisted operations. Today those include guarded clipboard text replacement, small namespaced persistent runtime-state changes, and validated boolean preference declarations rendered by Host 1.2.1+.
 
 The runtime still does **not** receive arbitrary AppKit/Objective-C objects, filesystem access, shell execution, generic process execution or unrestricted network access. Adding new native authority still requires an explicit host release.
 

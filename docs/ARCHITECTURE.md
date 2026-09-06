@@ -1,4 +1,4 @@
-# Stable host / replaceable runtime — Host API 1
+# Stable host / replaceable runtime — Host API 2
 
 ## Decision and purpose
 
@@ -20,6 +20,11 @@ operations. Runtime remains pure JavaScript and never receives native objects.
 This lets future runtime releases implement new policies over already-exposed
 system events without rebuilding the permission-bearing host.
 
+Host 1.2.1 extends that same category with a generic declarative preference
+surface. Runtime can declare a bounded list of boolean `runtime.*` settings; the
+host renders them as checked menu items and persists their values. This is not a
+generic menu/action bridge and does not add new native authority.
+
 ## Actual boundary
 
 | Runtime-owned | Host-owned |
@@ -28,7 +33,7 @@ system events without rebuilding the permission-bearing host.
 | Git integration plan and success messages | File scope/syntax validation, conflict recovery, non-force Git commands |
 | Selected menu action order/titles/sections and timer values | Fixed selector allowlist, permission UI, recovery menu, timer limits |
 | Clipboard-cleaning policy and future decisions over System Services events | Clipboard observation and guarded replacement, lifecycle/workspace/display event capture |
-| Decisions using small namespaced runtime state | UserDefaults storage with host-side key/value validation |
+| Boolean preference declarations and decisions using namespaced runtime state | Validation/rendering of preference toggles and UserDefaults storage |
 | Future pure decision functions via versioned JSON inputs/outputs | Drag state machine, overlay rendering, stable rule IDs and safe blacklist serialization |
 
 The goal is a small trusted boundary, not the smallest line count at the expense
@@ -43,8 +48,9 @@ runtime; the update-enabled toggle is a local UserDefaults preference.
 ## System Services contract
 
 `SystemServiceController` is the only generic runtime-facing native capability
-layer. It is intentionally event/operation based rather than a generic bridge.
-Runtime calls still execute in the existing short-lived JavaScriptCore worker.
+layer. It is intentionally event/operation/preference based rather than a generic
+bridge. Runtime calls still execute in the existing short-lived JavaScriptCore
+worker.
 
 Current event kinds:
 
@@ -62,9 +68,21 @@ Current allowed operation kinds:
 - `state.set` / `state.remove` — tiny primitive values under keys prefixed
   `runtime.`; no arbitrary files or defaults domains are exposed.
 
+Current preference surface:
+
+- Runtime `dispatch("preferences", {})` may return at most 16 declarations.
+- Each declaration contains only `title`, a validated `runtime.*` `key`, and a
+  boolean `defaultValue`.
+- Titles are bounded, keys must be unique, and invalid declarations cause the
+  entire preference list to fail closed.
+- The host renders valid declarations as normal checked menu items and stores
+  explicit user choices in the same namespaced System Services state dictionary.
+- Preference declarations are re-read when the menu opens, so a future
+  runtime-only update can add/remove safe boolean settings without a host restart.
+
 The host accepts at most 16 operations from one event. Unknown operations are
 ignored. Text and state values are bounded. A runtime response cannot introduce
-new native authority by inventing operation names.
+new native authority by inventing operation or preference names.
 
 Clipboard observation polls `NSPasteboard.changeCount` every 100 ms on the main
 run loop. It ignores non-text clipboard contents. When the host performs a
@@ -81,11 +99,13 @@ explicitly adds such an operation.
 
 ## Files and versions
 
-- `Resources/Info.plist`: HOST version/build (1.2.0 / 9 for this release).
-- `Runtime/manifest.json`: runtime API, independent semantic version, menu/timers.
-- `Runtime/runtime.js`: pure decision code with `dispatch(method,input)` including
-  `systemEvent` policy.
-- `Sources/YabaiMenu/SystemServiceController.swift`: native event/operation gate.
+- `Resources/Info.plist`: HOST version/build (1.2.1 / 10 for this release).
+- `Runtime/manifest.json`: runtime API, independent semantic version, menu/timers
+  and mirrored preference metadata used by packaging validation.
+- `Runtime/runtime.js`: pure decision code with `dispatch(method,input)`,
+  including `systemEvent` and `preferences` policy.
+- `Sources/YabaiMenu/SystemServiceController.swift`: native event/operation and
+  declarative-preference gate.
 - `scripts/package-runtime.js`: validates/packages runtime as one JSON asset.
 - `.app/Contents/Resources/bootstrap-runtime.json`: offline fallback, sealed once
   when the host is built. Never modified by runtime updates.
@@ -110,14 +130,20 @@ runtime package must still be trusted. It is NOT an unrestricted shell plugin.
 Do not add a generic process runner as an API shortcut. The child time limit
 protects availability; it is not a memory quota or a formal security proof.
 
-## Clipboard policy in Runtime 1.2.0
+## Clipboard policy in Runtime 1.2.1
 
-The first System Services consumer is automatic clipboard cleaning. Runtime
-1.2.0 removes a trailing `Čítajte viac:` attribution injected by Živé/Aktuality
+Automatic clipboard cleaning remains the first System Services consumer. Runtime
+1.2.1 removes a trailing `Čítajte viac:` attribution injected by Živé/Aktuality
 only when it points to `zive.aktuality.sk`, and strips known tracking query
 parameters from copied HTTP/HTTPS URLs. Functional query parameters are kept.
-The policy lives entirely in `Runtime/runtime.js`, so its rules can be refined
-later by runtime-only updates without another host replacement.
+
+The policy is enabled by default but now checks the persistent
+`runtime.clipboardCleaner.enabled` boolean state. Host 1.2.1 renders that runtime
+declaration as **Automatic Clipboard Cleaner** in the menu. Turning it off causes
+the runtime to return no clipboard replacement operation at all.
+
+The cleanup rules still live entirely in `Runtime/runtime.js`, so they can be
+refined later by runtime-only updates without another host replacement.
 
 ## Update and recovery
 
@@ -136,13 +162,14 @@ The candidate runs its health check and the existing native self-tests (with
 candidate override) against temporary Git fixtures, never live dotfiles/yabai.
 Only after success is it written atomically to active.json. Previous is retained.
 The app refreshes runtime menu/timers without a restart or an app-bundle write.
-Git operations cannot overlap installation via the menu's operation guard.
+System Services preference declarations are re-read on menu open. Git operations
+cannot overlap installation via the menu's operation guard.
 
 Startup falls back to the sealed bootstrap if persisted runtime decoding/health
-checks fail. A worker crash/timeout fails that operation without killing the
-host. It does not automatically downgrade for every application-level error;
-use **Restore Previous Runtime**, which also pauses auto-updates to avoid an
-immediate reinstall. Use **Automatically Update Runtime** to resume deliberately.
+checks fail. A worker crash/timeout fails that operation without killing the host.
+It does not automatically downgrade for every application-level error; use
+**Restore Previous Runtime**, which also pauses auto-updates to avoid an immediate
+reinstall. Use **Automatically Update Runtime** to resume deliberately.
 Offline/download/hash/API/test errors keep the current runtime intact.
 
 Host upgrades are manual via **Host Releases (Manual Installation)**. GitHub's
@@ -165,12 +192,13 @@ runtime-only behavior of host 1.1.0 and later.
    native self-tests with the bundled bootstrap runtime.
 4. Retest BSP fixtures, stacked leaves, minimum-width overlap, no-parent and
    ambiguous trees; Git autocommit/push with isolated local repositories.
-5. Runtime self-test must cover System Services policy such as tracking cleanup
-   and publisher-copy-footer removal. Host compilation validates the typed gate.
+5. Runtime self-test must cover System Services policy such as tracking cleanup,
+   publisher-copy-footer removal, preference declaration shape and disabled state.
 6. Test corrupt payload, wrong API, invalid version, untrusted URL and timeout.
 7. On a real Mac: approve the new host if macOS asks; verify AX/Input Monitoring,
-   BSP hover/drag, automatic clipboard cleaning, Maccy coexistence, and that a
-   subsequent runtime-only update leaves the host CDHash unchanged.
+   BSP hover/drag, **Automatic Clipboard Cleaner** menu toggle in both states,
+   Maccy coexistence, and that a subsequent runtime-only update leaves the host
+   CDHash unchanged.
 8. Test rollback, restart, offline wake, failed download and the second Mac.
 
 Never promise this is the last host update forever. Fixes to the native trust

@@ -19,12 +19,25 @@ assert.deepEqual(call('selfTest', {}), {ok:true});
 assert.equal(call('gitPlan', {ahead:2,behind:0}).integration, 'none');
 assert.equal(call('gitPlan', {ahead:0,behind:3}).integration, 'fastForward');
 assert.equal(call('gitPlan', {ahead:2,behind:3}).integration, 'rebase');
+const preferences = call('preferences', {});
+assert.deepEqual(preferences, [{
+    title:'Automatic Clipboard Cleaner',
+    key:'runtime.clipboardCleaner.enabled',
+    defaultValue:true
+}]);
+assert.deepEqual(manifest.preferences, preferences);
+const clipboardText = 'https://example.com/a?id=7&utm_source=x&fbclid=y';
 const systemResult = call('systemEvent', {
     kind:'clipboard.text.changed',
-    payload:{text:'https://example.com/a?id=7&utm_source=x&fbclid=y'},
+    payload:{text:clipboardText},
     state:{}
 });
 assert.deepEqual(systemResult, {operations:[{kind:'clipboard.replaceText',text:'https://example.com/a?id=7'}]});
+assert.deepEqual(call('systemEvent', {
+    kind:'clipboard.text.changed',
+    payload:{text:clipboardText},
+    state:{'runtime.clipboardCleaner.enabled':false}
+}), {operations:[]});
 assert.deepEqual(call('systemEvent', {
     kind:'workspace.didWake', payload:{}, state:{}
 }), {operations:[]});

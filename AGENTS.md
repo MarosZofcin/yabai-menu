@@ -21,11 +21,23 @@ and may execute only explicitly allowlisted native operations. Current event
 families include clipboard text changes, host lifecycle, workspace application
 activation/wake/sleep, and display-configuration changes. Current operation
 families include guarded clipboard text replacement and small namespaced runtime
-state set/remove operations. Extend runtime policy freely within those existing
-events/operations. Adding a new native authority, broad bridge, arbitrary AppKit
-selector, filesystem/shell/process/network access, or unbounded payload still
-requires an explicit host release and review. Unknown operations must fail closed
-or be ignored; runtime must never gain native objects directly.
+state set/remove operations.
+
+Host 1.2.1 adds a generic **runtime-declared boolean preference** surface inside
+that same System Services category. Before adding a new hard-coded menu toggle,
+use `dispatch("preferences", {})` if the feature only needs an on/off setting.
+Each declaration is limited to a short title, a unique validated `runtime.*` key,
+and a boolean default. The host renders it as a checked menu item and persists
+explicit user choices in the existing System Services state dictionary. Keep the
+matching metadata in `Runtime/manifest.json` synchronized so packaging tests can
+validate the declaration. Do not use preferences as a backdoor for selectors,
+arbitrary actions, paths, commands or native callbacks.
+
+Extend runtime policy freely within existing events/operations/preferences.
+Adding a new native authority, broad bridge, arbitrary AppKit selector,
+filesystem/shell/process/network access, or unbounded payload still requires an
+explicit host release and review. Unknown operations must fail closed or be
+ignored; runtime must never gain native objects directly.
 
 For a runtime release:
 
@@ -65,8 +77,9 @@ it to deleting other drafts or tags.
 
 Current runtime extraction is substantial but not total: BSP reconstruction,
 Git integration planning/messages, selected menu composition, timers, clipboard
-cleaning policy and other System Services decisions are external. Native event
-capture/execution, drag orchestration, AX rendering, blacklist serialization,
+cleaning policy, runtime preference declarations and other System Services
+decisions are external. Native event capture/execution, validation/rendering of
+preference controls, drag orchestration, AX rendering, blacklist serialization,
 Git I/O and validation remain host code. Do not claim these are already external.
 Expand the declarative API deliberately; do not replace it with arbitrary shell.
 

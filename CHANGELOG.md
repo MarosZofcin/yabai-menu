@@ -4,6 +4,24 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Host 1.2.1 / Runtime 1.2.1] - 2026-09-06
+
+### Added
+
+- Add a visible checked **Automatic Clipboard Cleaner** item to the Yabai Menu menu. It is enabled by default and can be turned off or back on with one click.
+- Persist the cleaner preference across launches and runtime updates using the existing namespaced System Services state store.
+- Add a generic runtime-declared boolean preference mechanism. Runtime code can declare a bounded list of validated `runtime.*` on/off settings; the host renders them as standard menu toggles.
+- Re-read runtime preference declarations when the menu opens, allowing future runtime-only releases to add or remove safe boolean settings without another host rebuild.
+
+### Fixed
+
+- Fix Host 1.2.0 shipping the Clipboard Cleaner permanently enabled with no user-facing way to disable it.
+
+### Architecture
+
+- Keep preference declarations strictly declarative: short title, validated namespaced key and boolean default only. They do not expose arbitrary selectors, AppKit objects, native callbacks, shell, filesystem or process execution.
+- Keep Host API at 2 because this is a backward-compatible expansion of the existing System Services category; Runtime 1.2.0 remains valid on Host 1.2.1.
+
 ## [Host 1.2.0 / Runtime 1.2.0] - 2026-09-05
 
 ### Added
