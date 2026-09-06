@@ -31,7 +31,7 @@ All notable changes to Yabai Menu are documented in this file.
 ### Added
 
 - **Automatic Clipboard Cleaner.** Yabai Menu now watches copied text in the background and cleans it automatically before paste; no extra keyboard shortcut is required.
-- Remove the trailing `Čítajte viac:` attribution that Živé/Aktuality pages append to copied text, restricted to links pointing back to `zive.aktuality.sk` so ordinary prose is not stripped.
+- Remove supported copy-injection or attribution footers appended to copied text using conservative matching rules.
 - Remove known tracking parameters from URLs, including `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `ttclid`, `twclid`, `igshid`, `mc_cid`, `mc_eid` and related identifiers while preserving functional query parameters.
 - Leave non-text clipboard content untouched and protect against clipboard races so a delayed runtime result cannot overwrite a newer copy.
 - Add Host API 2 with a reusable **System Services** bridge instead of a clipboard-specific native shortcut. The host emits bounded JSON events and executes only explicit allowlisted operations returned by the runtime.
