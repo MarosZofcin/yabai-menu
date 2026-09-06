@@ -92,6 +92,14 @@ function bspBranches(input) {
     return paths[0];
 }
 
+const runtimePreferences = [
+    {
+        title: "Automatic Clipboard Cleaner",
+        key: "runtime.clipboardCleaner.enabled",
+        defaultValue: true
+    }
+];
+
 const trackingParameters = new Set([
     "fbclid", "gclid", "dclid", "msclkid", "yclid", "ttclid", "twclid",
     "igshid", "li_fat_id", "mc_cid", "mc_eid", "mkt_tok", "vero_conv",
@@ -174,10 +182,12 @@ function dispatch(method,input) {
     case "gitPlan": return gitPlan(input);
     case "syncMessage": return syncMessage(input);
     case "bspBranches": return bspBranches(input);
+    case "preferences": return runtimePreferences;
     case "systemEvent": return systemEvent(input);
     case "selfTest": {
         if (gitPlan({ahead:1,behind:1}).integration !== "rebase") throw new Error("Git plan test");
         if (gitPlan({ahead:0,behind:1}).integration !== "fastForward") throw new Error("Git plan test");
+        if (runtimePreferences.length !== 1 || runtimePreferences[0].key !== "runtime.clipboardCleaner.enabled") throw new Error("Runtime preference test");
         const tracked = "https://example.com/a?id=7&utm_source=x&fbclid=y#part";
         if (cleanCopiedText(tracked) !== "https://example.com/a?id=7#part") throw new Error("Tracking cleanup test");
         const enabled = systemEvent({kind:"clipboard.text.changed", payload:{text:tracked}, state:{}});
