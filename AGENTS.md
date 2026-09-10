@@ -85,9 +85,13 @@ Keep `yabai-menu-name-base64` metadata separate from the generated regex so UI
 identity and remove/re-add survive alternation. Preserve custom regex rules.
 Migrate old generated literal rules only through guarded configuration writes,
 never passive menu reads. Maintain POSIX regex and isolated Git migration tests.
-Old hosts cannot implement this fix through runtime alone; install 1.2.2 on all
+Old hosts cannot implement this fix through runtime alone; install 1.2.3 on all
 Macs editing the shared file. Future agents must not reintroduce literal-only
 patterns, lossy regex-to-name parsing, or a shell bridge as a shortcut.
+Host 1.2.3 additionally requires guarded local migration and live blacklist
+application to complete before GitHub network I/O. Do not make local floating
+behavior conditional on fetch/push success. Reconcile already-open resizable
+windows after rule installation; native rules remain responsible for new ones.
 
 Current runtime extraction is substantial but not total: BSP reconstruction,
 Git integration planning/messages, selected menu composition, timers, clipboard

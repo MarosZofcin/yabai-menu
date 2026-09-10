@@ -452,9 +452,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
             do {
+                // Commit/migrate locally first and apply the resulting rules
+                // before network I/O. A failed GitHub fetch must not leave yabai
+                // running stale rules after the file was already changed.
+                _ = try gitSync.commitManagedFile(message: "Update yabai configuration")
+                let localApps = try store.load()
+                if shouldApply {
+                    try yabai.applyBlacklist(localApps, additionalLabelsToRemove: oldLabels)
+                }
                 let report = try gitSync.sync()
                 let apps = try store.load()
-                if report.configChanged && shouldApply {
+                if report.configChanged && shouldApply && apps != localApps {
                     try yabai.applyBlacklist(apps, additionalLabelsToRemove: oldLabels)
                 }
                 DispatchQueue.main.async {
