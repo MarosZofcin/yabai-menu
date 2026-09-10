@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var operationInProgress = false
     private var updateCheckInProgress = false
     private var updateMenuTitle = "Check for Updates"
+    private let floatingReconciliationQueue = DispatchQueue(label: "sk.maroszofcin.YabaiMenu.floating-reconciliation")
     private var gitHubState = GitHubSyncState.unknown
     private var lastSuccessfulSync: Date? {
         didSet { UserDefaults.standard.set(lastSuccessfulSync, forKey: "lastSuccessfulGitHubSync") }
@@ -116,6 +117,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         captureCurrentApplication(app)
         rebuildMenu()
+        guard let currentApp else { return }
+        let matching = floatingApps.filter { entry in
+            if let lhs = entry.bundleIdentifier, let rhs = currentApp.bundleIdentifier { return lhs == rhs }
+            return entry.name.precomposedStringWithCanonicalMapping.caseInsensitiveCompare(
+                currentApp.name.precomposedStringWithCanonicalMapping
+            ) == .orderedSame
+        }
+        guard !matching.isEmpty else { return }
+        // Some applications keep their process alive when the last window is
+        // closed. yabai can miss or incompletely resolve the reopened AX window,
+        // so retry after activation while its role/resizability settles.
+        let yabai = self.yabai
+        let diagnostics = self.diagnostics
+        for delay in [0.15, 0.60, 1.50] {
+            floatingReconciliationQueue.asyncAfter(deadline: .now() + delay) {
+                do {
+                    try yabai.reconcileFloatingWindows(for: matching)
+                } catch {
+                    diagnostics.log("floating_reconciliation_failed", [
+                        "application": currentApp.name,
+                        "error": error.localizedDescription
+                    ])
+                }
+            }
+        }
     }
 
     @objc private func systemDidWake(_ notification: Notification) {

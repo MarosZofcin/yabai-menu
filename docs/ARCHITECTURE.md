@@ -99,7 +99,7 @@ explicitly adds such an operation.
 
 ## Files and versions
 
-- `Resources/Info.plist`: HOST version/build (1.2.3 / 12 for this release).
+- `Resources/Info.plist`: HOST version/build (1.2.4 / 13 for this release).
 - `Runtime/manifest.json`: runtime API, independent semantic version, menu/timers
   and mirrored preference metadata used by packaging validation.
 - `Runtime/runtime.js`: pure decision code with `dispatch(method,input)`,
@@ -151,8 +151,17 @@ an existing managed window changed state.
 Regression coverage includes Darwin POSIX matching, mixed normalization,
 metacharacters and shell quoting, remove/re-add, stable name-only IDs, custom
 regex preservation, migration commit/push and unrelated-change protection.
-Real two-Mac behavior and privacy consent after installing 1.2.3 still need
+Real two-Mac behavior and privacy consent after installing 1.2.4 still need
 on-device verification; CI does not establish those properties.
+
+Host 1.2.4 uses the existing workspace-activation event as a bounded lifecycle
+backstop. Some applications close their visible window while keeping the process
+and yabai window record alive; yabai may then miss or incompletely resolve the
+reopened Accessibility window. When an explicitly configured floating app is
+activated, the host performs three serialized, short delayed reconciliations.
+It queries yabai, matches the canonical application name, and toggles only a
+matching resizable non-floating window. This does not broaden runtime authority
+or run arbitrary actions, and the normal yabai rule remains the primary path.
 
 The host starts its SAME executable with `--runtime-evaluate` in a short-lived
 worker. That entry point does not initialize AppKit, event taps or permission
