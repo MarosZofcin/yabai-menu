@@ -30,7 +30,7 @@ struct YabaircBlacklistStore: Sendable {
         let old = try load()
         if contains(old, application: application) { return (old, old) }
         var updated = old
-        updated.append(Self.makeRule(for: application))
+        updated.append(try Self.makeRule(for: application))
         try save(updated)
         return (old, try load())
     }
@@ -51,16 +51,44 @@ struct YabaircBlacklistStore: Sendable {
         }
     }
 
-    static func makeRule(for application: RunningApplication) -> FloatingApp {
-        let pattern = "^\(NSRegularExpression.escapedPattern(for: application.name))$"
+    // Called only from the guarded Git path, never while merely opening a menu.
+    // Custom patterns stay untouched. Changed managed literals are committed by
+    // the caller and applied through the normal configChanged synchronization.
+    @discardableResult
+    func migrateUnicodeRules() throws -> Bool {
+        let apps = try load()
+        let forms = try FloatingNamePattern.forms()
+        let updated = try apps.map { try Self.normalizedRule($0, forms: forms) }
+        let changed = zip(apps, updated).contains { old, new in
+            old.literalName != nil && (!old.appPattern.utf8.elementsEqual(new.appPattern.utf8)
+                || old.ruleLabel != new.ruleLabel)
+        }
+        guard changed else { return false }
+        try save(updated)
+        return true
+    }
+
+    private static func metadata(_ key: String, in line: String) -> String? {
+        // Generated values are whitespace-free; additional metadata must not
+        // become part of the bundle identifier used for app identity.
+        guard let comment = line.range(of: " # ") else { return nil }
+        let prefix = key + "="
+        return line[comment.upperBound...].split(whereSeparator: { $0.isWhitespace })
+            .first(where: { $0.hasPrefix(prefix) }).map { String($0.dropFirst(prefix.count)) }
+    }
+
+    static func makeRule(for application: RunningApplication) throws -> FloatingApp {
+        let name = application.name.precomposedStringWithCanonicalMapping
+        let pattern = try FloatingNamePattern.make(name, forms: FloatingNamePattern.forms())
         return FloatingApp(
-            name: application.name,
+            name: name,
             bundleIdentifier: application.bundleIdentifier,
             appPattern: pattern,
             ruleLabel: YabaiController.managedRulePrefix + YabaiController.stableIdentifier(
-                name: application.name,
+                name: name,
                 bundleIdentifier: application.bundleIdentifier
-            )
+            ),
+            literalName: name
         )
     }
 
@@ -69,26 +97,26 @@ struct YabaircBlacklistStore: Sendable {
               let pattern = shellValue(for: "app", in: line),
               let parsedLabel = shellValue(for: "label", in: line) else { return nil }
 
-        let bundleIdentifier: String?
-        if let range = line.range(of: "# yabai-menu-bundle-id=") {
-            let value = line[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
-            bundleIdentifier = value.isEmpty ? nil : value
-        } else {
-            bundleIdentifier = nil
-        }
+        let bundleIdentifier = metadata("yabai-menu-bundle-id", in: line)
+        let savedName = metadata("yabai-menu-name-base64", in: line)
+            .flatMap { Data(base64Encoded: $0) }.flatMap { String(data: $0, encoding: .utf8) }
+        let literalName = parsedLabel.hasPrefix(YabaiController.managedRulePrefix)
+            ? (savedName ?? FloatingNamePattern.literalName(pattern)) : nil
 
         return FloatingApp(
-            name: displayName(from: pattern),
+            name: literalName?.precomposedStringWithCanonicalMapping ?? displayName(from: pattern),
             bundleIdentifier: bundleIdentifier,
             appPattern: pattern,
-            ruleLabel: parsedLabel
+            ruleLabel: parsedLabel,
+            literalName: literalName
         )
     }
 
     private func save(_ apps: [FloatingApp]) throws {
         let original = try String(contentsOf: fileURL, encoding: .utf8)
         var lines = original.components(separatedBy: "\n")
-        let normalized = apps.map(Self.normalizedRule)
+        let forms = try FloatingNamePattern.forms()
+        let normalized = try apps.map { try Self.normalizedRule($0, forms: forms) }
             .reduce(into: [FloatingApp]()) { result, app in
                 if !result.contains(where: { $0.appPattern == app.appPattern }) { result.append(app) }
             }
@@ -154,15 +182,17 @@ struct YabaircBlacklistStore: Sendable {
         }
     }
 
-    private static func normalizedRule(_ app: FloatingApp) -> FloatingApp {
-        FloatingApp(
-            name: app.name,
+    private static func normalizedRule(_ app: FloatingApp, forms: [String]) throws -> FloatingApp {
+        let name = app.literalName?.precomposedStringWithCanonicalMapping ?? app.name
+        return FloatingApp(
+            name: name,
             bundleIdentifier: app.bundleIdentifier,
-            appPattern: app.appPattern,
+            appPattern: try app.literalName.map { try FloatingNamePattern.make($0, forms: forms) } ?? app.appPattern,
             ruleLabel: YabaiController.managedRulePrefix + YabaiController.stableIdentifier(
-                name: app.name,
+                name: name,
                 bundleIdentifier: app.bundleIdentifier
-            )
+            ),
+            literalName: app.literalName
         )
     }
 
@@ -183,6 +213,10 @@ struct YabaircBlacklistStore: Sendable {
                 var rule = "yabai -m rule --add label=\(shellQuote(app.ruleLabel)) app=\(shellQuote(app.appPattern)) manage=off"
                 if let bundleIdentifier = app.bundleIdentifier {
                     rule += " # yabai-menu-bundle-id=\(bundleIdentifier)"
+                }
+                if let name = app.literalName {
+                    let prefix = app.bundleIdentifier == nil ? " # " : " "
+                    rule += prefix + "yabai-menu-name-base64=" + Data(name.precomposedStringWithCanonicalMapping.utf8).base64EncodedString()
                 }
                 lines.append(rule)
             }

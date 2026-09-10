@@ -80,6 +80,7 @@ struct GitSyncController: Sendable {
         }
 
         try validateManagedFile()
+        try YabaircBlacklistStore(fileURL: managedFileURL).migrateUnicodeRules()
         try requireGit(["add", "--", relativePath], failurePrefix: "Could not stage yabairc")
         let staged = git(["diff", "--cached", "--quiet", "--", relativePath])
         if staged.status == 0 { return false }

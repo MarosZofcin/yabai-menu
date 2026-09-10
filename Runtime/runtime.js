@@ -179,6 +179,9 @@ function systemEvent(input) {
 
 function dispatch(method,input) {
     switch(method) {
+    // Policy only: host builds escaped exact-name regex from these canonical
+    // forms per grapheme. Runtime cannot inject a regex, alias, or shell text.
+    case "floatingNamePolicy": return {forms:["NFC", "NFD"]};
     case "gitPlan": return gitPlan(input);
     case "syncMessage": return syncMessage(input);
     case "bspBranches": return bspBranches(input);

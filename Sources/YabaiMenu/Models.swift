@@ -5,6 +5,8 @@ struct FloatingApp: Hashable, Sendable {
     let bundleIdentifier: String?
     let appPattern: String
     let ruleLabel: String
+    // Original literal app name, separate from the regex displayed by yabai.
+    var literalName: String? = nil
 }
 
 struct DisplayState: Equatable, Sendable {
