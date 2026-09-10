@@ -59,6 +59,7 @@ enum SelfTests {
             throw AppError.message("yabairc managed-block migration failed.")
         }
 
+        try testFloatingUnicode(in: directory)
         try testLocalGitSynchronization(in: directory)
         // Candidate validation invokes --self-test --runtime-file, so avoid
         // recursive installation tests within that child invocation.
@@ -775,6 +776,33 @@ enum SelfTests {
         )
         guard autoCommitted.contains("yabai -m config left_padding 120") else {
             throw AppError.message("Manual yabairc edit was not automatically committed and pushed.")
+        }
+        let legacyName = "Syst\u{00e9}mov\u{00e9} nastavenia".decomposedStringWithCanonicalMapping
+        let legacyRule = "yabai -m rule --add label=yabai-menu-float-3e4a5a703f65b94f app=\"^\(legacyName)$\" manage=off # yabai-menu-bundle-id=com.apple.systempreferences\n"
+        let legacyConfig = autoCommitted.replacingOccurrences(of: YabaircBlacklistStore.endMarker, with: legacyRule + YabaircBlacklistStore.endMarker)
+        try legacyConfig.write(to: clientYabairc, atomically: true, encoding: .utf8)
+        try requireGit(["add", "yabai/yabairc"], in: client)
+        try requireGit(["commit", "-m", "Legacy Unicode rule"], in: client)
+        let unrelated = client.appendingPathComponent("unrelated.txt")
+        try "Keep this local".write(to: unrelated, atomically: true, encoding: .utf8)
+        do {
+            _ = try sync.sync()
+            throw AppError.message("Unicode migration ignored unrelated changes.")
+        } catch GitSyncFailure.localChanges { }
+        guard try Data(contentsOf: clientYabairc) == Data(legacyConfig.utf8) else {
+            throw AppError.message("Blocked migration modified yabairc.")
+        }
+        try FileManager.default.removeItem(at: unrelated)
+        let migrationReport = try sync.sync()
+        guard migrationReport.configChanged else {
+            throw AppError.message("Migration did not request live rule refresh.")
+        }
+        try requireGit(["pull", "--ff-only"], in: verifier)
+        let remoteStore = YabaircBlacklistStore(fileURL: verifier.appendingPathComponent("yabai/yabairc"))
+        guard let migratedApp = try remoteStore.load().first(where: { $0.bundleIdentifier == "com.apple.systempreferences" }),
+              migratedApp.appPattern.contains("|"), migratedApp.literalName != nil,
+              try !sync.commitManagedFile() else {
+            throw AppError.message("Unicode migration was not pushed or was not idempotent.")
         }
     }
 

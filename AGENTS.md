@@ -75,6 +75,20 @@ it to deleting other drafts or tags.
 
 ## Honesty and verification
 
+Host 1.2.2 / API 3 fixes floating-name Unicode handling. Preserve both NFC and
+NFD forms in exact anchored POSIX ERE patterns, escape literals natively, and
+deduplicate variants by UTF-8 bytes (Swift String equality is canonical).
+Runtime `floatingNamePolicy` declares the normalization forms; the host validates
+that both are present. Older runtimes use the same mandatory native fallback.
+This is a narrow policy boundary, not externalized arbitrary regex generation.
+Keep `yabai-menu-name-base64` metadata separate from the generated regex so UI
+identity and remove/re-add survive alternation. Preserve custom regex rules.
+Migrate old generated literal rules only through guarded configuration writes,
+never passive menu reads. Maintain POSIX regex and isolated Git migration tests.
+Old hosts cannot implement this fix through runtime alone; install 1.2.2 on all
+Macs editing the shared file. Future agents must not reintroduce literal-only
+patterns, lossy regex-to-name parsing, or a shell bridge as a shortcut.
+
 Current runtime extraction is substantial but not total: BSP reconstruction,
 Git integration planning/messages, selected menu composition, timers, clipboard
 cleaning policy, runtime preference declarations and other System Services

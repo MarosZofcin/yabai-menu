@@ -62,6 +62,22 @@ From Host 1.1.0 onward, the app does not automatically replace its own bundle. R
 
 ## Runtime updates
 
+**Upgrade to 1.2.2 for Unicode floating rules.** Install the new Application ZIP
+manually on each Mac that edits the shared dotfiles. Host 1.2.1 builds these rules
+natively, so a runtime-only update cannot repair it. macOS may ask you to approve
+the replacement app and its Accessibility/Input Monitoring access again.
+
+Host 1.2.2 recognizes both Unicode spellings of accented application names (for
+example `é` and `e` + combining accent), including after removing and re-adding an
+app. Existing generated literal rules are migrated during the next successful
+configuration sync. You can trigger it with **Save & Sync yabairc**. Migration
+uses the usual syntax checks, auto-commit/push and live rule refresh; unrelated
+dotfiles changes still pause synchronization. Layout and padding stay intact.
+Custom regular expressions are preserved. No manual `yabairc` edit is needed.
+
+Runtime 1.2.2 requires Host API 3. Older hosts cannot install that runtime as a
+substitute for the client upgrade. Future runtime-only updates remain supported.
+
 The menu contains **Automatically Update Runtime**, **Check for Updates**, and **Restore Previous Runtime**. Runtime updates carry decision logic and policy while the native host remains stable whenever the existing Host API can support the change.
 
 Host upgrades are intentionally manual. A new host is needed only when a feature requires native authority that the current Host API/System Services layer does not expose.

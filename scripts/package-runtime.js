@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'Runtime/manifest.json'), 'utf8'));
 const script = fs.readFileSync(path.join(root, 'Runtime/runtime.js'), 'utf8');
-assert.equal(manifest.api, 2);
+assert.equal(manifest.api, 3);
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 const context = vm.createContext({});
 vm.runInContext(script, context, {timeout: 1000});
@@ -16,6 +16,7 @@ function call(method, input) {
     return JSON.parse(JSON.stringify(vm.runInContext('dispatch(testMethod,testInput)', context, {timeout: 1000})));
 }
 assert.deepEqual(call('selfTest', {}), {ok:true});
+assert.deepEqual(call('floatingNamePolicy', {}), {forms:['NFC','NFD']});
 assert.equal(call('gitPlan', {ahead:2,behind:0}).integration, 'none');
 assert.equal(call('gitPlan', {ahead:0,behind:3}).integration, 'fastForward');
 assert.equal(call('gitPlan', {ahead:2,behind:3}).integration, 'rebase');

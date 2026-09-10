@@ -4,6 +4,22 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Host 1.2.2 / Runtime 1.2.2] - 2026-09-10
+
+- Fix floating rules that looked identical to window app names but used a different
+  Unicode representation of accents. Exact POSIX regexes now accept NFC, NFD and
+  mixed forms, including after removing and re-adding an application.
+- Store the original canonical app name separately from generated regex syntax;
+  keep bundle identifiers and normalized name-only IDs stable.
+- Migrate old generated literal rules during guarded configuration sync, with
+  syntax validation, automatic commit/push and live rule refresh. Preserve user
+  layout and custom regexes; unrelated changes still block automatic commits.
+- Read live rules through `yabai -m rule --list` when replacing managed rules.
+- Add API 3's narrow `floatingNamePolicy` contract and POSIX/Git regressions.
+- Requires a manual upgrade to Host 1.2.2 on every Mac editing shared dotfiles:
+  1.2.1's native rule builder cannot be fixed by runtime alone. The new client may
+  require macOS approval again. Runtime updates keep the app bundle unchanged.
+
 ## [Host 1.2.1 / Runtime 1.2.1] - 2026-09-06
 
 ### Added
@@ -162,7 +178,8 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
-[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.2
 [1.2.1]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.1
 [1.2.0]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.0
 [1.0.3]: https://github.com/MarosZofcin/yabai-menu/compare/v1.0.2...v1.0.3

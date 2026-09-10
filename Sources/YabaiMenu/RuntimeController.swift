@@ -18,9 +18,9 @@ struct RuntimePackage: Codable {
 // no Foundation/ObjC objects or executable-launching callbacks are exported.
 final class RuntimeController: @unchecked Sendable {
     static let shared = RuntimeController()
-    // API 2 adds the generic system-event/allowlisted-operation bridge. API 1
-    // runtimes remain valid on this host; API 2 runtimes are rejected by old hosts.
-    static let api = 2
+    // API 3 adds canonical floating-name policy. Older runtimes remain valid;
+    // the native serializer retains its NFC/NFD fallback when restoring them.
+    static let api = 3
     static let maximumBytes = 1_000_000
     private let lock = NSLock()
     private var current: RuntimePackage?

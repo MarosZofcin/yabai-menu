@@ -1,6 +1,6 @@
 {
-  "api": 2,
-  "version": "1.2.1",
+  "api": 3,
+  "version": "1.2.2",
   "settings": {
     "statusInterval": 3,
     "syncInterval": 3600,

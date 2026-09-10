@@ -396,7 +396,7 @@ struct YabaiController: Sendable {
     }
 
     static func stableIdentifier(name: String, bundleIdentifier: String?) -> String {
-        let value = bundleIdentifier ?? name.lowercased()
+        let value = bundleIdentifier ?? name.precomposedStringWithCanonicalMapping.lowercased()
         var hash: UInt64 = 14_695_981_039_346_656_037
         for byte in value.utf8 {
             hash ^= UInt64(byte)
@@ -406,7 +406,7 @@ struct YabaiController: Sendable {
     }
 
     private func managedRuleLabels() -> [String] {
-        let result = run(["-m", "query", "--rules"])
+        let result = run(["-m", "rule", "--list"])
         guard result.succeeded,
               let data = result.standardOutput.data(using: .utf8),
               let rules = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }

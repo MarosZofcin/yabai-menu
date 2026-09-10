@@ -1,4 +1,4 @@
-# Stable host / replaceable runtime — Host API 2
+# Stable host / replaceable runtime — Host API 3
 
 ## Decision and purpose
 
@@ -99,7 +99,7 @@ explicitly adds such an operation.
 
 ## Files and versions
 
-- `Resources/Info.plist`: HOST version/build (1.2.1 / 10 for this release).
+- `Resources/Info.plist`: HOST version/build (1.2.2 / 11 for this release).
 - `Runtime/manifest.json`: runtime API, independent semantic version, menu/timers
   and mirrored preference metadata used by packaging validation.
 - `Runtime/runtime.js`: pure decision code with `dispatch(method,input)`,
@@ -117,6 +117,36 @@ Host releases use `vX.Y.Z` and a ZIP. Runtime releases use `runtime-vX.Y.Z` and
 Runtime releases must NOT rebuild, rename, replace, modify, or re-sign `.app`.
 
 ## Execution and authority
+
+### Floating name contract (Host 1.2.2 / API 3)
+
+Host 1.2.1 generated floating regexes and decoded names entirely in native code;
+there was no runtime callback capable of fixing Unicode matching. This release
+therefore requires a manual host upgrade on every Mac editing shared dotfiles.
+Runtime 1.2.2 requires API 3 to prevent older hosts from accepting an ineffective
+update. API 1/2 rollback remains supported with native NFC/NFD policy fallback.
+
+`dispatch("floatingNamePolicy", {})` returns only `{"forms":["NFC","NFD"]}`.
+The host requires both forms exactly once, bounds and validates literal names,
+and generates anchored POSIX ERE with escaped per-grapheme alternatives. This
+matches composed, decomposed and mixed spellings without matching unrelated
+names. Variant equality uses UTF-8 bytes, not Swift's canonical String equality.
+Runtime cannot return raw regex, shell code, paths or commands through this API.
+
+Generated rules carry the canonical literal display name in
+`yabai-menu-name-base64` metadata and retain bundle identity separately. Never
+derive a display name by stripping anchors from a generated alternation. Old
+anchored literal rules can be decoded conservatively; custom regexes are kept.
+Guarded configuration commits migrate legacy literals, validate shell syntax,
+preserve layout outside the managed block and use existing non-force Git sync.
+Successful sync reports changed bytes so live rules are refreshed. Unrelated
+working-tree changes block migration, and repeated migration is byte-idempotent.
+
+Regression coverage includes Darwin POSIX matching, mixed normalization,
+metacharacters and shell quoting, remove/re-add, stable name-only IDs, custom
+regex preservation, migration commit/push and unrelated-change protection.
+Real two-Mac behavior and privacy consent after installing 1.2.2 still need
+on-device verification; CI does not establish those properties.
 
 The host starts its SAME executable with `--runtime-evaluate` in a short-lived
 worker. That entry point does not initialize AppKit, event taps or permission
