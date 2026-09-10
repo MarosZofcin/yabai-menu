@@ -62,7 +62,7 @@ From Host 1.1.0 onward, the app does not automatically replace its own bundle. R
 
 ## Runtime updates
 
-**Upgrade to 1.2.3 for Unicode floating rules.** Install the new Application ZIP
+**Upgrade to 1.2.4 for reliable floating rules.** Install the new Application ZIP
 manually on each Mac that edits the shared dotfiles. Host 1.2.1 builds these rules
 natively, so a runtime-only update cannot repair it. macOS may ask you to approve
 the replacement app and its Accessibility/Input Monitoring access again.
@@ -77,6 +77,12 @@ Custom regular expressions are preserved. No manual `yabairc` edit is needed.
 Version 1.2.3 applies the corrected local rules before contacting GitHub and also
 reconciles windows that are already open, so a network failure cannot leave an
 old in-memory rule active.
+
+Version 1.2.4 also handles applications that remain running after their last
+window is closed. On the next activation, the client retries while the reopened
+window becomes available and restores floating state automatically. This covers
+System Settings and similar macOS/application window lifecycles where yabai may
+not reapply a creation-time rule.
 
 Runtime 1.2.2 requires Host API 3. Older hosts cannot install that runtime as a
 substitute for the client upgrade. Future runtime-only updates remain supported.

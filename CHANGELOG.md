@@ -4,6 +4,16 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Host 1.2.4 / Runtime 1.2.2] - 2026-09-10
+
+- Reconcile configured floating applications after macOS activates them, with
+  short retries while the reopened Accessibility window becomes resizable.
+- Handle applications such as System Settings that keep their process alive when
+  the last window closes. In that lifecycle yabai can miss the reopened window,
+  so creation-time rules alone do not reliably preserve floating state.
+- Keep the reconciliation scoped to applications explicitly listed in Floating
+  Apps and serialize retries to avoid toggling the same window twice.
+
 ## [Host 1.2.3 / Runtime 1.2.2] - 2026-09-10
 
 - Apply locally migrated floating rules before any GitHub network request. A
@@ -189,7 +199,8 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
-[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.3...HEAD
+[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.4...HEAD
+[1.2.4]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.4
 [1.2.3]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.3
 [1.2.2]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.2
 [1.2.1]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.1

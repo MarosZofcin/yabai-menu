@@ -103,7 +103,7 @@ struct YabaiController: Sendable {
         // `rule --apply` is best-effort in yabai for windows that already exist.
         // Reconcile eligible open windows explicitly so a repaired rule takes
         // effect immediately; newly created windows still use the native rules.
-        try floatOpenWindows(for: apps)
+        try reconcileFloatingWindows(for: apps)
     }
 
     func applyBlacklistWhenReady(_ apps: [FloatingApp]) throws {
@@ -134,7 +134,8 @@ struct YabaiController: Sendable {
         }
     }
 
-    private func floatOpenWindows(for apps: [FloatingApp]) throws {
+    func reconcileFloatingWindows(for apps: [FloatingApp]) throws {
+        guard !apps.isEmpty else { return }
         let result = run(["-m", "query", "--windows"])
         guard result.succeeded,
               let data = result.standardOutput.data(using: .utf8),
