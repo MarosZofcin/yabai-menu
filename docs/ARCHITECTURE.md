@@ -99,7 +99,7 @@ explicitly adds such an operation.
 
 ## Files and versions
 
-- `Resources/Info.plist`: HOST version/build (1.2.2 / 11 for this release).
+- `Resources/Info.plist`: HOST version/build (1.2.3 / 12 for this release).
 - `Runtime/manifest.json`: runtime API, independent semantic version, menu/timers
   and mirrored preference metadata used by packaging validation.
 - `Runtime/runtime.js`: pure decision code with `dispatch(method,input)`,
@@ -141,11 +141,17 @@ Guarded configuration commits migrate legacy literals, validate shell syntax,
 preserve layout outside the managed block and use existing non-force Git sync.
 Successful sync reports changed bytes so live rules are refreshed. Unrelated
 working-tree changes block migration, and repeated migration is byte-idempotent.
+Host 1.2.3 closes the offline ordering gap: guarded local migration/commit and
+live rule installation happen before fetch/rebase/push. Network failure may
+delay GitHub synchronization but cannot strand yabai with the old in-memory
+rule. Applying a blacklist also reconciles matching resizable windows that are
+already open because yabai's rule reapply path is not sufficient evidence that
+an existing managed window changed state.
 
 Regression coverage includes Darwin POSIX matching, mixed normalization,
 metacharacters and shell quoting, remove/re-add, stable name-only IDs, custom
 regex preservation, migration commit/push and unrelated-change protection.
-Real two-Mac behavior and privacy consent after installing 1.2.2 still need
+Real two-Mac behavior and privacy consent after installing 1.2.3 still need
 on-device verification; CI does not establish those properties.
 
 The host starts its SAME executable with `--runtime-evaluate` in a short-lived

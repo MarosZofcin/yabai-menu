@@ -4,6 +4,17 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Host 1.2.3 / Runtime 1.2.2] - 2026-09-10
+
+- Apply locally migrated floating rules before any GitHub network request. A
+  failed fetch can no longer leave yabai using a stale in-memory rule after the
+  corrected `yabairc` was already committed.
+- Reconcile resizable windows that are already open after installing rules. This
+  makes repaired entries such as System Settings float immediately even when
+  yabai's `rule --apply` does not update an existing managed window.
+- Reapply the complete local floating list on manual/startup sync, while retaining
+  the guarded single-file commit and conflict protections for Git synchronization.
+
 ## [Host 1.2.2 / Runtime 1.2.2] - 2026-09-10
 
 - Fix floating rules that looked identical to window app names but used a different
@@ -178,7 +189,8 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
-[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.3...HEAD
+[1.2.3]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.3
 [1.2.2]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.2
 [1.2.1]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.1
 [1.2.0]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.0

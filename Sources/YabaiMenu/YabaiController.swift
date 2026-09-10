@@ -100,6 +100,10 @@ struct YabaiController: Sendable {
             )
         }
         try requireSuccess(["-m", "rule", "--apply"], action: "apply floating rules")
+        // `rule --apply` is best-effort in yabai for windows that already exist.
+        // Reconcile eligible open windows explicitly so a repaired rule takes
+        // effect immediately; newly created windows still use the native rules.
+        try floatOpenWindows(for: apps)
     }
 
     func applyBlacklistWhenReady(_ apps: [FloatingApp]) throws {
@@ -127,6 +131,27 @@ struct YabaiController: Sendable {
                   (window["is-floating"] as? Bool) == true,
                   let id = window["id"] as? Int else { continue }
             _ = run(["-m", "window", String(id), "--toggle", "float"])
+        }
+    }
+
+    private func floatOpenWindows(for apps: [FloatingApp]) throws {
+        let result = run(["-m", "query", "--windows"])
+        guard result.succeeded,
+              let data = result.standardOutput.data(using: .utf8),
+              let windows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw AppError.message("Could not verify open windows after applying floating rules: \(result.usefulError)")
+        }
+        let names = Set(apps.map { $0.name.precomposedStringWithCanonicalMapping.lowercased() })
+        for window in windows {
+            guard let name = window["app"] as? String,
+                  names.contains(name.precomposedStringWithCanonicalMapping.lowercased()),
+                  (window["can-resize"] as? Bool) == true,
+                  (window["is-floating"] as? Bool) == false,
+                  let id = window["id"] as? Int else { continue }
+            try requireSuccess(
+                ["-m", "window", String(id), "--toggle", "float"],
+                action: "float the open \(name) window"
+            )
         }
     }
 

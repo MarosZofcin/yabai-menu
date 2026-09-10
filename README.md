@@ -62,7 +62,7 @@ From Host 1.1.0 onward, the app does not automatically replace its own bundle. R
 
 ## Runtime updates
 
-**Upgrade to 1.2.2 for Unicode floating rules.** Install the new Application ZIP
+**Upgrade to 1.2.3 for Unicode floating rules.** Install the new Application ZIP
 manually on each Mac that edits the shared dotfiles. Host 1.2.1 builds these rules
 natively, so a runtime-only update cannot repair it. macOS may ask you to approve
 the replacement app and its Accessibility/Input Monitoring access again.
@@ -74,6 +74,9 @@ configuration sync. You can trigger it with **Save & Sync yabairc**. Migration
 uses the usual syntax checks, auto-commit/push and live rule refresh; unrelated
 dotfiles changes still pause synchronization. Layout and padding stay intact.
 Custom regular expressions are preserved. No manual `yabairc` edit is needed.
+Version 1.2.3 applies the corrected local rules before contacting GitHub and also
+reconciles windows that are already open, so a network failure cannot leave an
+old in-memory rule active.
 
 Runtime 1.2.2 requires Host API 3. Older hosts cannot install that runtime as a
 substitute for the client upgrade. Future runtime-only updates remain supported.
