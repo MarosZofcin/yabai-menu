@@ -4,6 +4,20 @@ All notable changes to Yabai Menu are documented in this file.
 
 ## [Unreleased]
 
+## [Host 1.3.0 / Runtime 1.3.0] - 2026-09-16
+
+- Replace Control+Shift BSP branch inspection and Control+Option drag-and-warp
+  with menu-driven **Smart Move** for the focused tiled window.
+- Smart Move derives the nearest eligible visual container from live geometry:
+  it requires perpendicular overlap, prefers the smallest directional gap, and
+  uses centre distance only as a deterministic tie-breaker. It does not expose
+  or require BSP-tree decisions from the user.
+- Remove the global Quartz event tap, overlays, modifier/mouse diagnostics,
+  drag state machine, undo-warp action, and Input Monitoring request/settings.
+  Accessibility remains required for yabai window interaction.
+- Smart Move uses only yabai's fixed `--insert` and `--warp` operations, leaving
+  unrelated branches and their existing ratios untouched.
+
 ## [Host 1.2.4 / Runtime 1.2.2] - 2026-09-10
 
 - Reconcile configured floating applications after macOS activates them, with
@@ -199,7 +213,8 @@ All notable changes to Yabai Menu are documented in this file.
 - Conservative Git synchronization at launch, after wake, hourly, before edits, and on demand.
 - Local ad-hoc signing for use without a paid Apple Developer certificate.
 
-[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.2.4...HEAD
+[Unreleased]: https://github.com/MarosZofcin/yabai-menu/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.3.0
 [1.2.4]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.4
 [1.2.3]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.3
 [1.2.2]: https://github.com/MarosZofcin/yabai-menu/releases/tag/v1.2.2

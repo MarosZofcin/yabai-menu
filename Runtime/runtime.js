@@ -12,6 +12,31 @@ function syncMessage(input) {
     return input.autoCommitted ? "Saved yabairc and synchronized with GitHub" : "Synchronized with GitHub";
 }
 
+// Select a visual neighbour, never a BSP node.  The perpendicular-overlap
+// requirement avoids diagonal jumps; gap then centre distance resolve ties.
+function smartMove(input) {
+    const source = input.snapshots.find(w => w.id === input.source);
+    const valid = w => w["has-ax-reference"] && w["is-visible"] && !w["is-floating"] &&
+        !w["is-minimized"] && !w["is-hidden"] && w["stack-index"] === 0;
+    if (!source || !valid(source)) throw new Error("sourceNotTiled");
+    if (!["left", "right", "up", "down"].includes(input.direction)) throw new Error("invalidDirection");
+    const candidates = input.snapshots.filter(w => w.id !== source.id && valid(w) &&
+        w.space === source.space && w.display === source.display).map(w => {
+        const horizontal = input.direction === "left" || input.direction === "right";
+        const forward = input.direction === "left" ? source.frame.x - (w.frame.x + w.frame.w) :
+            input.direction === "right" ? w.frame.x - (source.frame.x + source.frame.w) :
+            input.direction === "up" ? source.frame.y - (w.frame.y + w.frame.h) : w.frame.y - (source.frame.y + source.frame.h);
+        const overlap = horizontal ? Math.min(source.frame.y + source.frame.h, w.frame.y + w.frame.h) - Math.max(source.frame.y, w.frame.y) :
+            Math.min(source.frame.x + source.frame.w, w.frame.x + w.frame.w) - Math.max(source.frame.x, w.frame.x);
+        const cross = horizontal ? Math.abs((source.frame.y + source.frame.h / 2) - (w.frame.y + w.frame.h / 2)) :
+            Math.abs((source.frame.x + source.frame.w / 2) - (w.frame.x + w.frame.w / 2));
+        return { id:w.id, forward, overlap, cross };
+    }).filter(c => c.forward >= -2 && c.overlap > 2)
+      .sort((a,b) => a.forward - b.forward || b.overlap - a.overlap || a.cross - b.cross || a.id - b.id);
+    if (!candidates.length) throw new Error("noVisualContainer");
+    return {target:candidates[0].id};
+}
+
 function bspBranches(input) {
     const fail = code => { throw new Error(code); };
     const target = input.snapshots.find(w => w.id === input.target);
@@ -185,10 +210,16 @@ function dispatch(method,input) {
     case "gitPlan": return gitPlan(input);
     case "syncMessage": return syncMessage(input);
     case "bspBranches": return bspBranches(input);
+    case "smartMove": return smartMove(input);
     case "preferences": return runtimePreferences;
     case "systemEvent": return systemEvent(input);
     case "selfTest": {
         if (gitPlan({ahead:1,behind:1}).integration !== "rebase") throw new Error("Git plan test");
+        const move = smartMove({direction:"right", source:1, snapshots:[
+            {id:1, frame:{x:0,y:0,w:400,h:400}, space:1, display:1, "has-ax-reference":true, "is-visible":true, "is-floating":false, "is-minimized":false, "is-hidden":false, "stack-index":0},
+            {id:2, frame:{x:410,y:0,w:400,h:400}, space:1, display:1, "has-ax-reference":true, "is-visible":true, "is-floating":false, "is-minimized":false, "is-hidden":false, "stack-index":0}
+        ]});
+        if (move.target !== 2) throw new Error("Smart Move geometry test");
         if (gitPlan({ahead:0,behind:1}).integration !== "fastForward") throw new Error("Git plan test");
         if (runtimePreferences.length !== 1 || runtimePreferences[0].key !== "runtime.clipboardCleaner.enabled") throw new Error("Runtime preference test");
         const tracked = "https://example.com/a?id=7&utm_source=x&fbclid=y#part";

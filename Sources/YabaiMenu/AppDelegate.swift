@@ -1,5 +1,5 @@
 import AppKit
-import CoreGraphics
+import ApplicationServices
 import ServiceManagement
 
 @MainActor
@@ -11,12 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let diagnostics = DiagnosticLogger.shared
     private let automaticUpdater = AutomaticUpdateController()
     private lazy var yabai = YabaiController(diagnostics: diagnostics)
-    private lazy var branchHighlight = BranchHighlightController(
+    private lazy var smartMove = SmartMoveController(
         yabai: yabai,
         diagnostics: diagnostics
     ) { [weak self] message in
         guard let self else { return }
-        self.branchHighlightStatus = message
+        self.smartMoveStatus = message
         self.rebuildMenu()
     }
 
@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var snapshot = YabaiSnapshot(isRunning: false, displays: [])
     private var floatingApps: [FloatingApp] = []
     private var currentApp: RunningApplication?
-    private var branchHighlightStatus = "BSP highlight: Starting…"
+    private var smartMoveStatus = "Smart Move: Ready"
     private var operationStatus: String?
     private var operationInProgress = false
     private var updateCheckInProgress = false
@@ -72,8 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         captureCurrentApplication(NSWorkspace.shared.frontmostApplication)
         refreshStatus()
         rebuildMenu()
-        branchHighlight.start()
-
         configureTimers()
 
         DispatchQueue.main.async { [weak self] in
@@ -104,7 +102,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusTimer?.invalidate()
         hourlySyncTimer?.invalidate()
         automaticUpdateTimer?.invalidate()
-        branchHighlight.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -169,7 +166,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshStatus() {
         snapshot = yabai.snapshot()
-        branchHighlight.refreshPermissions()
         statusItem.button?.contentTintColor = nil
         statusItem.button?.toolTip = snapshot.isRunning ? "yabai is running" : "yabai is stopped"
     }
@@ -186,21 +182,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(disabledItem("Current app: \(currentApp?.name ?? "Unavailable")"))
-        menu.addItem(disabledItem(Self.shortened(branchHighlightStatus)))
-        menu.addItem(disabledItem("Accessibility: \(branchHighlight.hasAccessibilityPermission ? "Allowed" : "Required")"))
-        menu.addItem(disabledItem("Input Monitoring: \(branchHighlight.hasInputMonitoringPermission ? "Allowed" : "Required")"))
-        if !branchHighlight.hasAccessibilityPermission {
+        menu.addItem(disabledItem(Self.shortened(smartMoveStatus)))
+        menu.addItem(disabledItem("Accessibility: \(AXIsProcessTrusted() ? "Allowed" : "Required")"))
+        if !AXIsProcessTrusted() {
             menu.addItem(actionItem("Open Accessibility Settings", #selector(openAccessibilitySettings)))
         }
-        if !branchHighlight.hasInputMonitoringPermission {
-            menu.addItem(actionItem("Open Input Monitoring Settings", #selector(openInputMonitoringSettings)))
+        menu.addItem(disabledItem("Smart Move uses visual geometry; no modifier keys"))
+        let smartMoveItem = NSMenuItem(title: "Smart Move Focused Window", action: nil, keyEquivalent: "")
+        let smartMoveMenu = NSMenu()
+        for direction in SmartMoveDirection.allCases {
+            let item = NSMenuItem(title: "Move \(direction.label)", action: #selector(smartMoveFocusedWindow(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = direction.rawValue
+            item.isEnabled = !operationInProgress && snapshot.isRunning
+            smartMoveMenu.addItem(item)
         }
-        menu.addItem(disabledItem("Inspect branch: Control + Shift + hover"))
-        menu.addItem(disabledItem("Move window: Control + Option + drag"))
+        smartMoveItem.submenu = smartMoveMenu
+        menu.addItem(smartMoveItem)
         appendRuntimeMenu(to: menu, section: "tools")
-        let undoItem = actionItem("Undo Last Warp", #selector(undoLastWarp))
-        undoItem.isEnabled = !operationInProgress && branchHighlight.canUndo
-        menu.addItem(undoItem)
         if let currentApp {
             let isFloating = store.contains(floatingApps, application: currentApp)
             let title = isFloating ? "Remove \(currentApp.name) from Floating Apps" : "Float \(currentApp.name)"
@@ -274,15 +273,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    @objc private func testBSPHighlight() {
-        branchHighlight.runDiagnostic()
+    @objc private func smartMoveFocusedWindow(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let direction = SmartMoveDirection(rawValue: raw) else { return }
+        smartMove.move(direction)
     }
 
     private func appendRuntimeMenu(to menu: NSMenu, section: String) {
         // Explicit selector map: runtime strings are never interpreted as ObjC
         // selectors, shell commands or paths.
         let actions: [String: Selector] = [
-            "testBSPHighlight": #selector(testBSPHighlight),
             "balanceCurrentSpace": #selector(balanceCurrentSpace),
             "editYabairc": #selector(editYabairc), "openRepository": #selector(openRepository),
             "reloadYabai": #selector(reloadYabai), "stopYabai": #selector(stopYabai),
@@ -314,11 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func balanceCurrentSpace() {
-        branchHighlight.balanceCurrentSpace()
-    }
-
-    @objc private func undoLastWarp() {
-        branchHighlight.undoLastWarp()
+        performYabaiAction("Balancing current Space") { try self.yabai.balanceFocusedSpace() }
     }
 
     @objc private func exportDiagnostics() {
@@ -326,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
         let uiSnapshot = Self.uiDiagnosticSnapshot()
             + "\ndiagnostic logging enabled: \(diagnostics.isEnabled)"
-            + "\nBSP listener active: \(branchHighlight.isListening)"
+            + "\nsmart move: local menu actions only (no event tap)"
         let yabai = yabai
         let diagnostics = diagnostics
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -364,10 +359,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openPrivacySettings(anchor: "Privacy_Accessibility")
     }
 
-    @objc private func openInputMonitoringSettings() {
-        openPrivacySettings(anchor: "Privacy_ListenEvent")
-    }
-
     private func openPrivacySettings(anchor: String) {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
         NSWorkspace.shared.open(url)
@@ -384,6 +375,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.target = self
         item.isEnabled = !operationInProgress
         return item
+    }
+
+    private func performYabaiAction(_ title: String, operation: @escaping () throws -> Void) {
+        operationStatus = "\(title)…"
+        rebuildMenu()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { try operation() }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success: self.operationStatus = "\(title) complete"
+                case .failure(let error): self.operationStatus = "\(title) failed: \(error.localizedDescription)"
+                }
+                self.rebuildMenu()
+            }
+        }
     }
 
     @objc private func addCurrentApp() {

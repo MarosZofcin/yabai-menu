@@ -1,13 +1,12 @@
 # Yabai Menu
 
-Native macOS menu-bar controller for yabai with BSP visualization, drag-and-warp window management, floating-app controls, safe yabairc synchronization, runtime updates, and an automatic Clipboard Cleaner.
+Native macOS menu-bar controller for yabai with geometry-first Smart Move, floating-app controls, safe yabairc synchronization, runtime updates, and an automatic Clipboard Cleaner.
 
 ## Highlights
 
 - **Automatic Clipboard Cleaner** — when enabled, copied text is cleaned automatically before paste. It removes injected copy-attribution footers and strips known URL tracking parameters such as `utm_*`, `fbclid`, `gclid`, `msclkid`, `ttclid` and related identifiers while preserving functional query parameters. It can be turned on or off directly in the Yabai Menu menu.
-- **BSP branch inspection** — hold Control + Shift and hover a tiled window to highlight its parent BSP branch without changing the layout.
-- **Visual drag-and-warp** — hold Control + Option and drag a tiled window toward a target edge to move it within the BSP tree.
-- **Balance current Space** and undo the last supported warp.
+- **Smart Move** — choose Left, Right, Up, or Down for the focused tiled window. The app finds the nearest overlapping visual container from live geometry, so you do not need to reason about BSP branches.
+- **Balance current Space** when you explicitly want yabai to rebalance it.
 - **Floating-app management** directly from the menu, backed by the canonical `yabairc` configuration.
 - **Git synchronization** for managed `yabairc` changes with conservative validation and conflict protection.
 - **Stable host + replaceable runtime** — normal feature/policy updates are delivered through the runtime without replacing or re-signing the app bundle.
@@ -56,16 +55,16 @@ See [`docs/FEATURES.md`](docs/FEATURES.md) for the feature-oriented summary and 
 
 ## Installation
 
-Download the latest **Application** release ZIP, extract `Yabai Menu.app`, move it to Applications and launch it manually. Because the app is ad-hoc signed, macOS may require the usual first-launch approval and Accessibility/Input Monitoring permissions for the yabai interaction features.
+Download the latest **Application** release ZIP, extract `Yabai Menu.app`, move it to Applications and launch it manually. Because the app is ad-hoc signed, macOS may require the usual first-launch approval and Accessibility permission for yabai interaction. Smart Move does not install a global event listener and does not require Input Monitoring.
 
 From Host 1.1.0 onward, the app does not automatically replace its own bundle. Runtime updates are downloaded separately and activated outside the `.app` bundle.
 
 ## Runtime updates
 
-**Upgrade to 1.2.4 for reliable floating rules.** Install the new Application ZIP
+**Upgrade to 1.3.0 for Smart Move and reliable floating rules.** Install the new Application ZIP
 manually on each Mac that edits the shared dotfiles. Host 1.2.1 builds these rules
 natively, so a runtime-only update cannot repair it. macOS may ask you to approve
-the replacement app and its Accessibility/Input Monitoring access again.
+the replacement app and its Accessibility access again.
 
 Host 1.2.2 recognizes both Unicode spellings of accented application names (for
 example `é` and `e` + combining accent), including after removing and re-adding an
