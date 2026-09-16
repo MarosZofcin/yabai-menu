@@ -99,7 +99,7 @@ explicitly adds such an operation.
 
 ## Files and versions
 
-- `Resources/Info.plist`: HOST version/build (1.2.4 / 13 for this release).
+- `Resources/Info.plist`: HOST version/build (1.3.0 / 14 for this release).
 - `Runtime/manifest.json`: runtime API, independent semantic version, menu/timers
   and mirrored preference metadata used by packaging validation.
 - `Runtime/runtime.js`: pure decision code with `dispatch(method,input)`,
@@ -254,8 +254,8 @@ runtime-only behavior of host 1.1.0 and later.
 5. Runtime self-test must cover System Services policy such as tracking cleanup,
    copy-footer removal, preference declaration shape and disabled state.
 6. Test corrupt payload, wrong API, invalid version, untrusted URL and timeout.
-7. On a real Mac: approve the new host if macOS asks; verify AX/Input Monitoring,
-   BSP hover/drag, **Automatic Clipboard Cleaner** menu toggle in both states,
+7. On a real Mac: approve the new host if macOS asks; verify Accessibility,
+   Smart Move in each direction, **Automatic Clipboard Cleaner** menu toggle in both states,
    Maccy coexistence, and that a subsequent runtime-only update leaves the host
    CDHash unchanged. As of 2026-09-06, the Clipboard Cleaner toggle and active
    cleaning path are confirmed working on-device; the remaining subchecks are

@@ -134,6 +134,38 @@ struct YabaiController: Sendable {
         }
     }
 
+    /// Moves the focused leaf beside the visually nearest eligible container.
+    /// The runtime chooses that container from geometry; the host only performs
+    /// yabai's two fixed, allowlisted layout operations.
+    func smartMove(direction: SmartMoveDirection) throws -> Int {
+        let focused = run(["-m", "query", "--windows", "--window"])
+        guard focused.succeeded,
+              let focusedData = focused.standardOutput.data(using: .utf8),
+              let source = try? JSONDecoder().decode(BSPWindowSnapshot.self, from: focusedData),
+              source.hasAXReference, source.isVisible, !source.isFloating,
+              !source.isMinimized, !source.isHidden, source.stackIndex == 0 else {
+            throw AppError.message("Focus an ordinary tiled window before using Smart Move.")
+        }
+        let result = run(["-m", "query", "--windows", "--space", String(source.space)])
+        guard result.succeeded,
+              let data = result.standardOutput.data(using: .utf8),
+              let windows = try? JSONDecoder().decode([BSPWindowSnapshot].self, from: data) else {
+            throw AppError.message("Could not read the current Space for Smart Move.")
+        }
+        let encoded = try JSONEncoder().encode(windows)
+        let snapshots = try JSONSerialization.jsonObject(with: encoded)
+        guard let plan = try RuntimeController.shared.call("smartMove", input: [
+            "direction": direction.rawValue, "source": source.id, "snapshots": snapshots
+        ]) as? [String: Any], let target = plan["target"] as? Int,
+              target != source.id, windows.contains(where: { $0.id == target }) else {
+            throw AppError.message("No visual \(direction.label.lowercased()) container is available.")
+        }
+        try requireSuccess(["-m", "window", String(target), "--insert", direction.yabaiInsertion], action: "set the Smart Move insertion")
+        try requireSuccess(["-m", "window", String(source.id), "--warp", String(target)], action: "perform Smart Move")
+        diagnostics?.log("smart_move_applied", ["source_window_id": source.id, "target_window_id": target, "direction": direction.rawValue])
+        return target
+    }
+
     func reconcileFloatingWindows(for apps: [FloatingApp]) throws {
         guard !apps.isEmpty else { return }
         let result = run(["-m", "query", "--windows"])
@@ -401,15 +433,10 @@ struct YabaiController: Sendable {
         sections.append("architecture: \(Self.architecture)")
         sections.append("app: \(Bundle.main.bundleIdentifier ?? "unknown") \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"))")
         sections.append("accessibility trusted: \(AXIsProcessTrusted())")
-        sections.append("input monitoring trusted: \(CGPreflightListenEventAccess())")
         sections.append(uiSnapshot)
         sections.append("yabai path: \(executableURL?.path ?? "not found")")
         let commands: [(String, [String])] = [
             ("YABAI VERSION", ["--version"]),
-            ("MOUSE MODIFIER", ["-m", "config", "mouse_modifier"]),
-            ("MOUSE ACTION 1", ["-m", "config", "mouse_action1"]),
-            ("MOUSE ACTION 2", ["-m", "config", "mouse_action2"]),
-            ("MOUSE DROP ACTION", ["-m", "config", "mouse_drop_action"]),
             ("FOCUSED DISPLAY", ["-m", "query", "--displays", "--display"]),
             ("FOCUSED SPACE", ["-m", "query", "--spaces", "--space"]),
             ("WINDOWS ON FOCUSED SPACE", ["-m", "query", "--windows", "--space"])
